@@ -1,0 +1,6 @@
+{
+  "name": "BiteDash",
+  "description": "Zimbabwe's premier food delivery app. Browse local restaurants like Chicken Inn and Garwe, pay seamlessly with EcoCash, InnBucks, and Telecash, and track your sadza and meals in real-time.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
