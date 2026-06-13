@@ -25,23 +25,14 @@ jobs:
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
 
-      - name: Decode keystore
-        run: |
-          echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > ${{ github.workspace }}/my-upload-key.jks
-          ls -la ${{ github.workspace }}/my-upload-key.jks
-
-      - name: Build release APK
-        env:
-          KEYSTORE_PATH: ${{ github.workspace }}/my-upload-key.jks
-          STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
-          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
-        run: ./gradlew assembleRelease
+      - name: Build debug APK
+        run: ./gradlew assembleDebug
 
       - name: Upload APK to artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: release-apk
-          path: app/build/outputs/apk/release/app-release.apk
+          name: debug-apk
+          path: app/build/outputs/apk/debug/app-debug.apk
           retention-days: 30
 
       - name: Create Release
