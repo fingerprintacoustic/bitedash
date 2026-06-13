@@ -51,7 +51,6 @@ jobs:
         run: |
           firebase appdistribution:distribute app/build/outputs/apk/debug/app-debug.apk \
             --app 1:844405617058:android:4aecb29249183682a642fb \
-            --groups "testers" \
             --token "${{ secrets.FIREBASE_TOKEN }}"
         env:
           FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
