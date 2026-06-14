@@ -12,5 +12,6 @@ data class OrderEntity(
     val paymentMethod: String,
     val paymentPhone: String,
     val status: String,
+    val driverTip: Double = 0.0,
     val timestamp: Long = System.currentTimeMillis()
 )

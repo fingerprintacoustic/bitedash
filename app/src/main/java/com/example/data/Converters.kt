@@ -7,11 +7,8 @@ import com.squareup.moshi.Types
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
 
 class Converters {
-    private val moshi: Moshi = Moshi.Builder()
-        .add(KotlinJsonAdapterFactory())
-        .build()
-
-    private val menuItemListType: java.lang.reflect.Type = Types.newParameterizedType(List::class.java, MenuItem::class.java)
+    private val moshi = Moshi.Builder().add(KotlinJsonAdapterFactory()).build()
+    private val menuItemListType = Types.newParameterizedType(List::class.java, MenuItem::class.java)
     private val adapter = moshi.adapter<List<MenuItem>>(menuItemListType)
 
     @TypeConverter
@@ -21,12 +18,10 @@ class Converters {
 
     @TypeConverter
     fun toMenuItemList(value: String?): List<MenuItem>? {
-        if (value == null) return emptyList()
-        return try {
-            adapter.fromJson(value) ?: emptyList()
+        try {
+            return value?.let { adapter.fromJson(it) }
         } catch (e: Exception) {
-            e.printStackTrace()
-            emptyList()
+            return emptyList()
         }
     }
 }

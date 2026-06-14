@@ -32,6 +32,14 @@ sealed interface PaymentStep {
     data class Error(val message: String) : PaymentStep
 }
 
+sealed interface UserProfile {
+    object Idle : UserProfile
+    object Customer : UserProfile
+    data class RestaurantOwner(val restaurantId: String, val restaurantName: String) : UserProfile
+    data class Driver(val driverId: Int, val driverName: String) : UserProfile
+    object Admin : UserProfile
+}
+
 class BiteDashViewModel(application: Application) : AndroidViewModel(application) {
 
     private val repository: OrderRepository
@@ -119,11 +127,24 @@ class BiteDashViewModel(application: Application) : AndroidViewModel(application
     )
 
     // Flowing States
+    private val _currentProfile = MutableStateFlow<UserProfile>(UserProfile.Idle)
+    val currentProfile: StateFlow<UserProfile> = _currentProfile.asStateFlow()
+
+    private val _isManualMode = MutableStateFlow(false)
+    val isManualMode: StateFlow<Boolean> = _isManualMode.asStateFlow()
+
     private val _selectedRestaurant = MutableStateFlow<Restaurant?>(null)
     val selectedRestaurant: StateFlow<Restaurant?> = _selectedRestaurant.asStateFlow()
 
     private val _cart = MutableStateFlow<List<CartItem>>(emptyList())
     val cart: StateFlow<List<CartItem>> = _cart.asStateFlow()
+
+    private val _driverTip = MutableStateFlow(0.0)
+    val driverTip: StateFlow<Double> = _driverTip.asStateFlow()
+
+    fun setDriverTip(tip: Double) {
+        _driverTip.value = tip
+    }
 
     private val _checkoutMethod = MutableStateFlow("EcoCash") // EcoCash, InnBucks, Telecash
     val checkoutMethod: StateFlow<String> = _checkoutMethod.asStateFlow()
@@ -313,11 +334,16 @@ class BiteDashViewModel(application: Application) : AndroidViewModel(application
         // Collect dbActiveOrders and resume tracking if there's any active item
         viewModelScope.launch {
             dbActiveOrders.collect { activeList ->
-                // If there is an active order and we aren't currently tracking, start tracking
-                if (activeList.isNotEmpty() && _activeOrder.value == null) {
+                if (activeList.isNotEmpty()) {
                     val currentTrack = activeList.first()
                     _activeOrder.value = currentTrack
-                    resumeTracking(currentTrack)
+                    if (_isManualMode.value) {
+                        updateTrackingStateManual(currentTrack.status)
+                    } else if (trackingJob == null || !trackingJob!!.isActive) {
+                        resumeTracking(currentTrack)
+                    }
+                } else {
+                    _activeOrder.value = null
                 }
             }
         }
@@ -366,6 +392,7 @@ class BiteDashViewModel(application: Application) : AndroidViewModel(application
 
     fun clearCart() {
         _cart.value = emptyList()
+        _driverTip.value = 0.0
     }
 
     fun getCartTotal(): Double {
@@ -378,6 +405,8 @@ class BiteDashViewModel(application: Application) : AndroidViewModel(application
         if (selectedRest != null && _cart.value.isNotEmpty()) {
             total += selectedRest.deliveryFee
         }
+        // Add driver tip
+        total += _driverTip.value
         return total
     }
 
@@ -436,13 +465,15 @@ class BiteDashViewModel(application: Application) : AndroidViewModel(application
 
             // Save to DB
             val itemsSummaryStr = cartItems.joinToString(", ") { "${it.menuItem.name} x${it.quantity}" }
+            val initialStatus = if (_isManualMode.value) "PENDING_ACCEPTANCE" else "PREPARING"
             val newOrder = OrderEntity(
                 restaurantName = restaurant.name,
                 itemsSummary = itemsSummaryStr,
                 totalCost = sum,
                 paymentMethod = method,
                 paymentPhone = paymentPhone,
-                status = "PREPARING" // Transitions immediately to preparing on successful payment
+                status = initialStatus,
+                driverTip = _driverTip.value
             )
 
             val orderId = repository.insertOrder(newOrder)
@@ -458,8 +489,12 @@ class BiteDashViewModel(application: Application) : AndroidViewModel(application
             // Jump to Active delivery tab
             _selectedTab.value = 2
 
-            // Start delivery simulation!
-            startTrackingSimulation(insertedOrder)
+            if (!_isManualMode.value) {
+                // Start delivery simulation!
+                startTrackingSimulation(insertedOrder)
+            } else {
+                updateTrackingStateManual(initialStatus)
+            }
         }
     }
 
@@ -608,6 +643,43 @@ class BiteDashViewModel(application: Application) : AndroidViewModel(application
             }
         } else {
             _selectedTab.value = 0
+        }
+    }
+
+    fun setProfile(profile: UserProfile) {
+        _currentProfile.value = profile
+    }
+
+    fun setCheckoutModeIsManual(isManual: Boolean) {
+        _isManualMode.value = isManual
+    }
+
+    fun updateOrderStatusManual(orderId: Int, newStatus: String) {
+        viewModelScope.launch {
+            repository.updateOrderStatus(orderId, newStatus)
+            updateActiveOrderLocalState(orderId, newStatus)
+            if (_isManualMode.value) {
+                updateTrackingStateManual(newStatus)
+            }
+        }
+    }
+
+    fun updateTrackingStateManual(status: String) {
+        _trackingStatusText.value = when (status) {
+            "PENDING_ACCEPTANCE" -> "Waiting for Restaurant to Accept..."
+            "PREPARING" -> "Kitchen preparing your freshly cooked meal..."
+            "READY_FOR_PICKUP" -> "Meal is ready! Waiting for rider pickup..."
+            "OUT_FOR_DELIVERY" -> "Rider in transit down Samora Machel Avenue..."
+            "COMPLETED" -> "Meal successfully delivered! Savor BiteDash meal."
+            else -> "Processing..."
+        }
+        _trackingProgress.value = when (status) {
+            "PENDING_ACCEPTANCE" -> 0.0f
+            "PREPARING" -> 0.25f
+            "READY_FOR_PICKUP" -> 0.50f
+            "OUT_FOR_DELIVERY" -> 0.75f
+            "COMPLETED" -> 1.0f
+            else -> 0.0f
         }
     }
 

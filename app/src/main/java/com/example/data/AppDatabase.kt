@@ -12,7 +12,7 @@ import com.example.data.entity.OrderEntity
 import com.example.data.entity.RestaurantEntity
 import com.example.data.entity.DriverEntity
 
-@Database(entities = [OrderEntity::class, RestaurantEntity::class, DriverEntity::class], version = 3, exportSchema = false)
+@Database(entities = [OrderEntity::class, RestaurantEntity::class, DriverEntity::class], version = 4, exportSchema = false)
 @TypeConverters(Converters::class)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun orderDao(): OrderDao
