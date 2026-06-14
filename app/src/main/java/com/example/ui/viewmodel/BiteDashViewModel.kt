@@ -130,7 +130,7 @@ class BiteDashViewModel(application: Application) : AndroidViewModel(application
     private val _currentProfile = MutableStateFlow<UserProfile>(UserProfile.Idle)
     val currentProfile: StateFlow<UserProfile> = _currentProfile.asStateFlow()
 
-    private val _isManualMode = MutableStateFlow(false)
+    private val _isManualMode = MutableStateFlow(true)
     val isManualMode: StateFlow<Boolean> = _isManualMode.asStateFlow()
 
     private val _selectedRestaurant = MutableStateFlow<Restaurant?>(null)
