@@ -173,6 +173,12 @@ class BiteDashViewModel(application: Application) : AndroidViewModel(application
     private val _selectedTab = MutableStateFlow(0) // 0: Browse, 1: Cart, 2: Tracking, 3: History
     val selectedTab: StateFlow<Int> = _selectedTab.asStateFlow()
 
+    private val _payoutSchedule = MutableStateFlow("Weekly")
+    val payoutSchedule: StateFlow<String> = _payoutSchedule.asStateFlow()
+
+    private val _isPayoutInProgress = MutableStateFlow(false)
+    val isPayoutInProgress: StateFlow<Boolean> = _isPayoutInProgress.asStateFlow()
+
     // Dynamic states backed by DB
     private val _restaurantsState = MutableStateFlow<List<Restaurant>>(emptyList())
     val restaurantsState: StateFlow<List<Restaurant>> = _restaurantsState.asStateFlow()
@@ -652,6 +658,36 @@ class BiteDashViewModel(application: Application) : AndroidViewModel(application
 
     fun setCheckoutModeIsManual(isManual: Boolean) {
         _isManualMode.value = isManual
+    }
+
+    fun claimOrderManual(orderId: Int, driverId: Int, driverName: String) {
+        viewModelScope.launch {
+            repository.claimOrder(orderId, driverId, driverName, "OUT_FOR_DELIVERY")
+            val currentActive = _activeOrder.value
+            if (currentActive != null && currentActive.id == orderId) {
+                _activeOrder.value = currentActive.copy(status = "OUT_FOR_DELIVERY", driverId = driverId, driverName = driverName)
+            } else {
+                repository.getOrderById(orderId)?.let {
+                    _activeOrder.value = it
+                }
+            }
+            if (_isManualMode.value) {
+                updateTrackingStateManual("OUT_FOR_DELIVERY")
+            }
+        }
+    }
+
+    fun setPayoutSchedule(schedule: String) {
+        _payoutSchedule.value = schedule
+    }
+
+    fun triggerPayoutSettlement() {
+        viewModelScope.launch {
+            _isPayoutInProgress.value = true
+            delay(2500)
+            repository.markCompletedOrdersAsSettled()
+            _isPayoutInProgress.value = false
+        }
     }
 
     fun updateOrderStatusManual(orderId: Int, newStatus: String) {

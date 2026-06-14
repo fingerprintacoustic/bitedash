@@ -1911,6 +1911,8 @@ fun AdminPortalOverlay(
     val restaurants by viewModel.restaurantsState.collectAsStateWithLifecycle()
     val drivers by viewModel.driversState.collectAsStateWithLifecycle()
     val orders by viewModel.orderHistory.collectAsStateWithLifecycle()
+    val payoutSchedule by viewModel.payoutSchedule.collectAsStateWithLifecycle()
+    val isPayoutInProgress by viewModel.isPayoutInProgress.collectAsStateWithLifecycle()
 
     var showAddRestaurantDialog by remember { mutableStateOf(false) }
     var showAddDriverDialog by remember { mutableStateOf(false) }
@@ -2215,36 +2217,119 @@ fun AdminPortalOverlay(
 
                                         Card(
                                             modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp),
-                                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.15f)),
+                                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.08f)),
                                             border = BorderStroke(1.dp, MaterialTheme.colorScheme.tertiary.copy(alpha = 0.2f))
                                         ) {
-                                            Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                                Text("BiteDash Zimbabwe Monetization Model Split", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+                                            Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                                Text("💼 BiteDash Central Settlement & Escrow Ledger", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary)
                                                 
-                                                val completedCount = orders.count { o -> o.status == "COMPLETED" }
-                                                val riderTotalTips = orders.sumOf { o -> o.driverTip }
-                                                val riderDeliveryFees = completedCount * 2.00
-                                                val riderOverallTotal = riderDeliveryFees + riderTotalTips
+                                                val completedOrders = orders.filter { o -> o.status == "COMPLETED" }
+                                                val completedCount = completedOrders.size
                                                 
-                                                val rawFoodRevenue = (totalSales - riderDeliveryFees - riderTotalTips).coerceAtLeast(0.0)
+                                                val unsettledOrders = completedOrders.filter { !it.isSettled }
+                                                val unsettledTotal = unsettledOrders.sumOf { it.totalCost }
+                                                val unsettledRiderTips = unsettledOrders.sumOf { it.driverTip }
+                                                val unsettledRiderFees = unsettledOrders.size * 2.00
+                                                val unsettledRiderTotal = unsettledRiderFees + unsettledRiderTips
+                                                val unsettledRawFood = (unsettledTotal - unsettledRiderTotal).coerceAtLeast(0.0)
                                                 val platformCommissionPercent = 0.10
-                                                val adminRevenue = rawFoodRevenue * platformCommissionPercent
-                                                val restaurantPayout = rawFoodRevenue * (1.0 - platformCommissionPercent)
+                                                val unsettledAdminRevenue = unsettledRawFood * platformCommissionPercent
+                                                val unsettledRestaurantPayout = unsettledRawFood * (1.0 - platformCommissionPercent)
                                                 
-                                                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                                    Text("🍳 Restaurant Kitchens (90% of Food Cost)", fontSize = 11.sp, color = Color.Gray)
-                                                    Text("USD $${String.format(Locale.US, "%.2f", restaurantPayout)}", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                                val settledOrders = completedOrders.filter { it.isSettled }
+                                                val settledTotal = settledOrders.sumOf { it.totalCost }
+                                                val settledRiderTips = settledOrders.sumOf { it.driverTip }
+                                                val settledRiderFees = settledOrders.size * 2.00
+                                                val settledRiderTotal = settledRiderFees + settledRiderTips
+                                                val settledRawFood = (settledTotal - settledRiderTotal).coerceAtLeast(0.0)
+                                                val settledAdminRevenue = settledRawFood * platformCommissionPercent
+                                                val settledRestaurantPayout = settledRawFood * (1.0 - platformCommissionPercent)
+
+                                                val adminEscrowPool = unsettledTotal
+                                                
+                                                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                                                    Column {
+                                                        Text("🏦 Admin Escrow Wallet Balance", fontSize = 11.sp, color = Color.Gray, fontWeight = FontWeight.SemiBold)
+                                                        Text("USD $${String.format(Locale.US, "%.2f", adminEscrowPool)}", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                                                    }
+                                                    Badge(containerColor = MaterialTheme.colorScheme.primaryContainer) {
+                                                        Text("Centralized Funds", fontSize = 10.sp, color = MaterialTheme.colorScheme.onPrimaryContainer, modifier = Modifier.padding(4.dp))
+                                                    }
                                                 }
-                                                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                                    Text("🛵 Delivery Riders (Fee + 100% Tips)", fontSize = 11.sp, color = Color.Gray)
-                                                    Text("USD $${String.format(Locale.US, "%.2f", riderOverallTotal)}", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                                
+                                                Divider(color = Color.LightGray.copy(alpha = 0.3f))
+                                                
+                                                Text("Payout Frequency Schedule:", fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurface)
+                                                Row(
+                                                    modifier = Modifier.fillMaxWidth(),
+                                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                                ) {
+                                                    listOf("Daily", "Weekly", "On-Demand (Manual)").forEach { mode ->
+                                                        val isSelected = (mode == "Daily" && payoutSchedule == "Daily") ||
+                                                                        (mode == "Weekly" && payoutSchedule == "Weekly") ||
+                                                                        (mode == "On-Demand (Manual)" && payoutSchedule == "On-Demand (Manual)")
+                                                        OutlinedButton(
+                                                            onClick = { viewModel.setPayoutSchedule(mode) },
+                                                            modifier = Modifier.weight(1f),
+                                                            shape = RoundedCornerShape(8.dp),
+                                                            contentPadding = PaddingValues(horizontal = 4.dp, vertical = 2.dp),
+                                                            colors = ButtonDefaults.outlinedButtonColors(
+                                                                containerColor = if (isSelected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent,
+                                                                contentColor = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.primary
+                                                            ),
+                                                            border = BorderStroke(1.dp, if (isSelected) MaterialTheme.colorScheme.primary else Color.LightGray)
+                                                        ) {
+                                                            Text(mode, fontSize = 10.sp, maxLines = 1)
+                                                        }
+                                                    }
                                                 }
-                                                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                                    Text("💻 Platform Revenue (10% Admin Listing Commission)", fontSize = 11.sp, color = Color.Gray)
-                                                    Text("USD $${String.format(Locale.US, "%.2f", adminRevenue)}", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                                                
+                                                Spacer(modifier = Modifier.height(4.dp))
+                                                
+                                                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                                        Text("🍳 Restaurant Kitchens Share (90% of Food Cost)", fontSize = 11.sp, color = Color.Gray)
+                                                        Text("Pending: USD $${String.format(Locale.US, "%.2f", unsettledRestaurantPayout)}", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                                    }
+                                                    Text("          Historically Settled: USD $${String.format(Locale.US, "%.2f", settledRestaurantPayout)}", fontSize = 9.sp, color = Color.Gray)
+                                                    
+                                                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                                        Text("🛵 Delivery Riders Share (Standard Fee + Tips)", fontSize = 11.sp, color = Color.Gray)
+                                                        Text("Pending: USD $${String.format(Locale.US, "%.2f", unsettledRiderTotal)}", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                                    }
+                                                    Text("          Historically Settled: USD $${String.format(Locale.US, "%.2f", settledRiderTotal)}", fontSize = 9.sp, color = Color.Gray)
+                                                    
+                                                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                                        Text("💻 Platform net profit share (10% Listing Charge)", fontSize = 11.sp, color = Color.Gray)
+                                                        Text("Held secure: USD $${String.format(Locale.US, "%.2f", unsettledAdminRevenue)}", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                                                    }
+                                                    Text("          Historically Settled: USD $${String.format(Locale.US, "%.2f", settledAdminRevenue)}", fontSize = 9.sp, color = Color.Gray)
                                                 }
+                                                
                                                 Divider(color = Color.LightGray.copy(alpha = 0.3f), modifier = Modifier.padding(vertical = 2.dp))
-                                                Text("Note: Restaurants and Riders are settled weekly to their EcoCash / InnBucks wallet ledger.", fontSize = 9.sp, color = Color.Gray)
+                                                
+                                                if (isPayoutInProgress) {
+                                                    Column(
+                                                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                                                        horizontalAlignment = Alignment.CenterHorizontally,
+                                                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                                                    ) {
+                                                        CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
+                                                        Text("Broadcasting bulk payouts through Zim gateways (EcoCash, ZIPIT, InnBucks)...", fontSize = 9.sp, color = MaterialTheme.colorScheme.primary, textAlign = TextAlign.Center, fontWeight = FontWeight.Medium)
+                                                    }
+                                                } else {
+                                                    Button(
+                                                        onClick = { viewModel.triggerPayoutSettlement() },
+                                                        modifier = Modifier.fillMaxWidth(),
+                                                        enabled = unsettledTotal > 0,
+                                                        shape = RoundedCornerShape(8.dp),
+                                                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
+                                                    ) {
+                                                        Icon(Icons.Default.Send, contentDescription = "Settle payouts", modifier = Modifier.size(16.dp))
+                                                        Spacer(modifier = Modifier.width(4.dp))
+                                                        Text("Trigger Bulk Settle to Restaurants & Riders Now", fontSize = 11.sp)
+                                                    }
+                                                }
                                             }
                                         }
 
@@ -2302,6 +2387,8 @@ fun AdminPortalOverlay(
         var restCat by remember { mutableStateOf("Fast Food") }
         var restFee by remember { mutableStateOf("2.00") }
         var restTime by remember { mutableStateOf("20-30 min") }
+        var restOwnerUsername by remember { mutableStateOf("owner") }
+        var restOwnerPassword by remember { mutableStateOf("password") }
         
         // Menu Items builder inside brand dialog
         var itemName by remember { mutableStateOf("") }
@@ -2356,6 +2443,27 @@ fun AdminPortalOverlay(
                             modifier = Modifier.fillMaxWidth(),
                             singleLine = true
                         )
+                    }
+
+                    item {
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            OutlinedTextField(
+                                value = restOwnerUsername,
+                                onValueChange = { restOwnerUsername = it },
+                                label = { Text("Owner Login ID") },
+                                placeholder = { Text("e.g. owner") },
+                                modifier = Modifier.weight(1f),
+                                singleLine = true
+                            )
+                            OutlinedTextField(
+                                value = restOwnerPassword,
+                                onValueChange = { restOwnerPassword = it },
+                                label = { Text("Owner Password") },
+                                placeholder = { Text("password") },
+                                modifier = Modifier.weight(1f),
+                                singleLine = true
+                            )
+                        }
                     }
 
                     item {
@@ -2513,7 +2621,9 @@ fun AdminPortalOverlay(
                                                     "Pizza & Grills" -> "pizza"
                                                     "Cafes & Drinks" -> "cafe"
                                                     else -> "chicken"
-                                                }
+                                                },
+                                                ownerUsername = restOwnerUsername.ifBlank { "owner" },
+                                                ownerPassword = restOwnerPassword.ifBlank { "password" }
                                             )
                                         )
                                         showAddRestaurantDialog = false
@@ -2921,6 +3031,25 @@ fun RoleSelectionGate(viewModel: BiteDashViewModel) {
     var activeSelectionTab by remember { mutableStateOf(0) } // 0: Customer, 1: Restaurant, 2: Rider, 3: Admin
     var logoTapCount by remember { mutableStateOf(0) }
     val isAdminTabVisible = logoTapCount >= 5
+    var showWebDashboardSimulator by remember { mutableStateOf(false) }
+
+    // Owner Login details
+    var ownerLoginUsername by remember { mutableStateOf("") }
+    var ownerLoginPassword by remember { mutableStateOf("") }
+    var ownerLoginError by remember { mutableStateOf("") }
+    var showOwnerSignupForm by remember { mutableStateOf(false) }
+    
+    // Multi ownership intermediate selection
+    var selectedMatchingRests by remember { mutableStateOf<List<com.example.model.Restaurant>?>(null) }
+
+    // Signup specific fields
+    var ownerSignupName by remember { mutableStateOf("") }
+    var ownerSignupDesc by remember { mutableStateOf("") }
+    var ownerSignupLoc by remember { mutableStateOf("Belgravia, Harare") }
+    var ownerSignupCat by remember { mutableStateOf("Fast Food") }
+    var ownerSignupUsername by remember { mutableStateOf("") }
+    var ownerSignupPassword by remember { mutableStateOf("") }
+    var ownerSignupError by remember { mutableStateOf("") }
 
     Box(
         modifier = Modifier
@@ -2970,6 +3099,17 @@ fun RoleSelectionGate(viewModel: BiteDashViewModel) {
                 textAlign = TextAlign.Center,
                 modifier = Modifier.padding(bottom = 8.dp)
             )
+
+            Button(
+                onClick = { showWebDashboardSimulator = true },
+                modifier = Modifier.fillMaxWidth().testTag("launch_web_payout_simulator"),
+                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Icon(Icons.Default.Settings, contentDescription = "Web Portal Icon", modifier = Modifier.size(16.dp))
+                Spacer(modifier = Modifier.width(6.dp))
+                Text("💻 Open Desktop Web Portal Simulator", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+            }
 
             // Tabs for selector
             ScrollableTabRow(
@@ -3047,41 +3187,314 @@ fun RoleSelectionGate(viewModel: BiteDashViewModel) {
                     }
                 }
                 1 -> {
-                    // RESTAURANT OWNER
-                    Text(
-                        "Select restaurant kitchen to process food receipts and manage menus:",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = Color.Gray
-                    )
+                    // RESTAURANT OWNER PORTAL
+                    if (selectedMatchingRests != null) {
+                        // MULTI-OWNERSHIP SELECTOR HUB
+                        val matching = selectedMatchingRests!!
+                        Text(
+                            text = "Multiple Kitchen Hubs Detected",
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary,
+                            style = MaterialTheme.typography.titleMedium
+                        )
+                        Text(
+                            text = "Your owner credentials (${ownerLoginUsername}) are linked. You can manage the following registered brands. Select kitchen node:",
+                            fontSize = 11.sp,
+                            color = Color.Gray,
+                            textAlign = TextAlign.Center
+                        )
 
-                    LazyColumn(
-                        modifier = Modifier.heightIn(max = 180.dp),
-                        verticalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        items(restaurants) { rest ->
-                            ElevatedCard(
-                                onClick = { viewModel.setProfile(UserProfile.RestaurantOwner(rest.id, rest.name)) },
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Row(
-                                    modifier = Modifier.padding(12.dp),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
+                        LazyColumn(
+                            modifier = Modifier.heightIn(max = 220.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            items(matching) { rest ->
+                                ElevatedCard(
+                                    onClick = { 
+                                        viewModel.setProfile(UserProfile.RestaurantOwner(rest.id, rest.name))
+                                    },
+                                    modifier = Modifier.fillMaxWidth()
                                 ) {
-                                    Column {
-                                        Text(rest.name, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium)
-                                        Text(rest.location, style = MaterialTheme.typography.labelSmall, color = Color.Gray)
+                                    Row(
+                                        modifier = Modifier.padding(14.dp),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(rest.name, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium)
+                                            Text(rest.location, style = MaterialTheme.typography.labelSmall, color = Color.Gray)
+                                            Text("Category: ${rest.category}", fontSize = 9.sp, color = MaterialTheme.colorScheme.primary)
+                                        }
+                                        Icon(
+                                            imageVector = Icons.Default.KeyboardArrowRight,
+                                            contentDescription = "Access Kitchen"
+                                        )
                                     }
-                                    Icon(
-                                        imageVector = Icons.Default.KeyboardArrowRight,
-                                        contentDescription = "Select"
-                                    )
                                 }
                             }
                         }
-                    }
-                    if (restaurants.isEmpty()) {
-                        Text("No restaurants setup yet. Login as Admin to add, approve or remove restaurants.", style = MaterialTheme.typography.bodySmall, color = Color.Red)
+
+                        OutlinedButton(
+                            onClick = { selectedMatchingRests = null },
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Icon(Icons.Default.ArrowBack, contentDescription = "Back", modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Switch Account / Back to Login")
+                        }
+                    } else if (showOwnerSignupForm) {
+                        // OWNER REGISTER BRAND
+                        Text(
+                            text = "Register New Kitchen Brand",
+                            fontWeight = FontWeight.Bold,
+                            style = MaterialTheme.typography.titleMedium,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                        Text(
+                            text = "Setup a physical kitchen listing. Link with credentials to allow multi-ownership switching:",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = Color.Gray,
+                            textAlign = TextAlign.Center
+                        )
+
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                            OutlinedTextField(
+                                value = ownerSignupName,
+                                onValueChange = { ownerSignupName = it },
+                                label = { Text("Kitchen/Brand Name") },
+                                placeholder = { Text("e.g. Simba Grills") },
+                                modifier = Modifier.fillMaxWidth().testTag("owner_signup_name"),
+                                singleLine = true
+                            )
+
+                            OutlinedTextField(
+                                value = ownerSignupDesc,
+                                onValueChange = { ownerSignupDesc = it },
+                                label = { Text("Short Slogan/Description") },
+                                placeholder = { Text("Traditional flame-kissed Zimbabwean meats.") },
+                                modifier = Modifier.fillMaxWidth(),
+                                singleLine = true
+                            )
+
+                            OutlinedTextField(
+                                value = ownerSignupLoc,
+                                onValueChange = { ownerSignupLoc = it },
+                                label = { Text("Location") },
+                                placeholder = { Text("Eastlea, Harare") },
+                                modifier = Modifier.fillMaxWidth(),
+                                singleLine = true
+                            )
+
+                            // Horiz chips for Cat
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                listOf("Fast Food", "Traditional", "Pizza & Grills", "Cafes & Drinks").forEach { cat ->
+                                    val isSel = ownerSignupCat == cat
+                                    Box(
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .clip(RoundedCornerShape(8.dp))
+                                            .background(if (isSel) MaterialTheme.colorScheme.primary else Color.LightGray.copy(alpha = 0.2f))
+                                            .clickable { ownerSignupCat = cat }
+                                            .padding(vertical = 4.dp),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text(cat.split(" ").first(), color = if (isSel) Color.White else Color.DarkGray, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                                    }
+                                }
+                            }
+
+                            Divider(color = Color.LightGray.copy(alpha = 0.3f), modifier = Modifier.padding(vertical = 4.dp))
+
+                            Text("Secure Login Credentials", fontWeight = FontWeight.Bold, fontSize = 11.sp, color = MaterialTheme.colorScheme.primary)
+                            Text("If you own another restaurant, use its exact credentials here to link them together!", fontSize = 9.sp, color = Color.Gray)
+
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                OutlinedTextField(
+                                    value = ownerSignupUsername,
+                                    onValueChange = { ownerSignupUsername = it },
+                                    label = { Text("Login ID") },
+                                    placeholder = { Text("owner") },
+                                    modifier = Modifier.weight(1f),
+                                    singleLine = true
+                                )
+                                OutlinedTextField(
+                                    value = ownerSignupPassword,
+                                    onValueChange = { ownerSignupPassword = it },
+                                    label = { Text("Password") },
+                                    placeholder = { Text("password") },
+                                    modifier = Modifier.weight(1f),
+                                    singleLine = true
+                                )
+                            }
+
+                            if (ownerSignupError.isNotEmpty()) {
+                                Text(ownerSignupError, color = Color.Red, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                            }
+
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                                OutlinedButton(
+                                    onClick = { showOwnerSignupForm = false },
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    Text("Back to Sign In")
+                                }
+                                Button(
+                                    onClick = {
+                                        if (ownerSignupName.isBlank() || ownerSignupUsername.isBlank() || ownerSignupPassword.isBlank()) {
+                                            ownerSignupError = "Please fill name, username & password!"
+                                        } else {
+                                            val newId = "res_" + System.currentTimeMillis()
+                                            val sampleItems = listOf(
+                                                com.example.model.MenuItem(
+                                                    id = "item_${newId}_1",
+                                                    name = "Signature Platter",
+                                                    description = "Our legendary chef-selected special flame grilled meat with standard portion of chips.",
+                                                    price = 7.99,
+                                                    category = "Mains"
+                                                ),
+                                                com.example.model.MenuItem(
+                                                    id = "item_${newId}_2",
+                                                    name = "Sweet Zimbabwean Lemonade",
+                                                    description = "Squeezed fresh daily with local organic Chimanimani lemons.",
+                                                    price = 2.50,
+                                                    category = "Drinks"
+                                                )
+                                            )
+                                            viewModel.addRestaurant(
+                                                com.example.model.Restaurant(
+                                                    id = newId,
+                                                    name = ownerSignupName,
+                                                    description = if (ownerSignupDesc.isBlank()) "Flame grilled local specialties." else ownerSignupDesc,
+                                                    rating = 4.5,
+                                                    deliveryTime = "15-30 min",
+                                                    deliveryFee = 2.00,
+                                                    category = ownerSignupCat,
+                                                    location = ownerSignupLoc,
+                                                    menuItems = sampleItems,
+                                                    imageKeyword = when (ownerSignupCat) {
+                                                        "Traditional" -> "sadza"
+                                                        "Pizza & Grills" -> "pizza"
+                                                        "Cafes & Drinks" -> "cafe"
+                                                        else -> "chicken"
+                                                    },
+                                                    ownerUsername = ownerSignupUsername.trim(),
+                                                    ownerPassword = ownerSignupPassword.trim()
+                                                )
+                                            )
+                                            // Reset signup fields
+                                            ownerSignupName = ""
+                                            ownerSignupDesc = ""
+                                            ownerSignupError = ""
+                                            showOwnerSignupForm = false
+                                            
+                                            // Pre-fill log in credentials
+                                            ownerLoginUsername = ownerSignupUsername.trim()
+                                            ownerLoginPassword = ownerSignupPassword.trim()
+                                        }
+                                    },
+                                    modifier = Modifier.weight(1.2f).testTag("register_restaurant_brand_btn"),
+                                ) {
+                                    Text("Register Kitchen")
+                                }
+                            }
+                        }
+                    } else {
+                        // LOG IN FORM
+                        Text(
+                            text = "Kitchen Hub Authenticator",
+                            fontWeight = FontWeight.Bold,
+                            style = MaterialTheme.typography.titleMedium,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                        Text(
+                            text = "Secure kitchen node gateway for Zimbabwean brand operators & managers.",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = Color.Gray,
+                            textAlign = TextAlign.Center
+                        )
+
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                            OutlinedTextField(
+                                value = ownerLoginUsername,
+                                onValueChange = { 
+                                    ownerLoginUsername = it
+                                    ownerLoginError = "" 
+                                },
+                                label = { Text("Owner Login ID (Username/Phone)") },
+                                placeholder = { Text("owner") },
+                                modifier = Modifier.fillMaxWidth().testTag("owner_login_username"),
+                                singleLine = true
+                            )
+
+                            OutlinedTextField(
+                                value = ownerLoginPassword,
+                                onValueChange = { 
+                                    ownerLoginPassword = it
+                                    ownerLoginError = ""
+                                },
+                                label = { Text("Owner Password") },
+                                placeholder = { Text("password") },
+                                visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
+                                modifier = Modifier.fillMaxWidth().testTag("owner_login_password"),
+                                singleLine = true
+                            )
+
+                            if (ownerLoginError.isNotEmpty()) {
+                                Text(ownerLoginError, color = Color.Red, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                            }
+
+                            Button(
+                                onClick = {
+                                    val matched = restaurants.filter {
+                                        it.ownerUsername.trim().lowercase() == ownerLoginUsername.trim().lowercase() &&
+                                        it.ownerPassword.trim() == ownerLoginPassword.trim()
+                                    }
+                                    if (matched.isEmpty()) {
+                                        ownerLoginError = "Incorrect credentials. Try 'owner' and 'password' or register a new brand."
+                                    } else if (matched.size == 1) {
+                                        viewModel.setProfile(UserProfile.RestaurantOwner(matched.first().id, matched.first().name))
+                                    } else {
+                                        // Store discovered restaurants for intermediate selector
+                                        selectedMatchingRests = matched
+                                    }
+                                },
+                                modifier = Modifier.fillMaxWidth().testTag("owner_login_btn"),
+                                shape = RoundedCornerShape(12.dp),
+                                enabled = ownerLoginUsername.isNotBlank() && ownerLoginPassword.isNotBlank()
+                            ) {
+                                Text("Sign In & Open Kitchen")
+                            }
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                TextButton(
+                                    onClick = {
+                                        ownerLoginUsername = "owner"
+                                        ownerLoginPassword = "password"
+                                        ownerLoginError = ""
+                                    }
+                                ) {
+                                    Text("🔑 Quick Demo Fill", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                }
+
+                                TextButton(
+                                    onClick = { 
+                                        showOwnerSignupForm = true
+                                        ownerSignupUsername = ownerLoginUsername
+                                        ownerSignupPassword = ownerLoginPassword
+                                    }
+                                ) {
+                                    Text("📝 Register New Kitchen", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                        }
                     }
                 }
                 2 -> {
@@ -3167,6 +3580,13 @@ fun RoleSelectionGate(viewModel: BiteDashViewModel) {
                 }
             }
         }
+
+        if (showWebDashboardSimulator) {
+            WebDashboardSimulatorDialog(
+                onDismiss = { showWebDashboardSimulator = false },
+                viewModel = viewModel
+            )
+        }
     }
 }
 
@@ -3181,10 +3601,72 @@ fun RestaurantOwnerDashboard(
     
     val restaurant = restaurants.find { it.id == owner.restaurantId }
     var isEditMenuOpen by remember { mutableStateOf(false) }
+    var showSwitchKitchenDialog by remember { mutableStateOf(false) }
 
     val matchedOrders = orderHistory.filter { it.restaurantName.trim().lowercase() == owner.restaurantName.trim().lowercase() }
     val activeOrders = matchedOrders.filter { it.status != "COMPLETED" }
     val completedOrders = matchedOrders.filter { it.status == "COMPLETED" }
+
+    val currentOwnerUser = restaurant?.ownerUsername ?: ""
+    val currentOwnerPass = restaurant?.ownerPassword ?: ""
+    
+    val otherOwnedRestaurants = if (currentOwnerUser.isNotEmpty() && currentOwnerPass.isNotEmpty()) {
+        restaurants.filter { 
+            it.ownerUsername.lowercase().trim() == currentOwnerUser.lowercase().trim() &&
+            it.ownerPassword.trim() == currentOwnerPass.trim() &&
+            it.id != owner.restaurantId
+        }
+    } else {
+        emptyList()
+    }
+
+    if (showSwitchKitchenDialog && otherOwnedRestaurants.isNotEmpty()) {
+        AlertDialog(
+            onDismissRequest = { showSwitchKitchenDialog = false },
+            title = {
+                Text("Switch Active Kitchen Node", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text("Select another linked kitchen directly:", fontSize = 12.sp, color = Color.Gray)
+                    otherOwnedRestaurants.forEach { otherRest ->
+                        val otherMatched = orderHistory.filter { it.restaurantName.trim().lowercase() == otherRest.name.trim().lowercase() }
+                        val otherPending = otherMatched.filter { it.status != "COMPLETED" }.size
+                        
+                        ElevatedCard(
+                            onClick = {
+                                viewModel.setProfile(UserProfile.RestaurantOwner(otherRest.id, otherRest.name))
+                                showSwitchKitchenDialog = false
+                            },
+                            modifier = Modifier.fillMaxWidth().clickable {
+                                viewModel.setProfile(UserProfile.RestaurantOwner(otherRest.id, otherRest.name))
+                                showSwitchKitchenDialog = false
+                            }
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(12.dp).fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column {
+                                    Text(otherRest.name, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium)
+                                    Text(otherRest.location, style = MaterialTheme.typography.labelSmall, color = Color.Gray)
+                                }
+                                Badge(containerColor = if (otherPending > 0) MaterialTheme.colorScheme.primary else Color.LightGray) {
+                                    Text("$otherPending pending", fontSize = 10.sp)
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showSwitchKitchenDialog = false }) {
+                    Text("Close")
+                }
+            }
+        )
+    }
 
     Scaffold(
         topBar = {
@@ -3198,6 +3680,17 @@ fun RestaurantOwnerDashboard(
                     }
                 },
                 actions = {
+                    if (otherOwnedRestaurants.isNotEmpty()) {
+                        FilledTonalButton(
+                            onClick = { showSwitchKitchenDialog = true },
+                            modifier = Modifier.padding(end = 4.dp).testTag("dashboard_switch_kitchen_btn"),
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
+                        ) {
+                            Icon(Icons.Default.Refresh, contentDescription = "Switch Node", modifier = Modifier.size(14.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Switch Kitchen (${otherOwnedRestaurants.size})", fontSize = 10.sp)
+                        }
+                    }
                     TextButton(onClick = { viewModel.setProfile(UserProfile.Idle) }) {
                         Icon(Icons.Default.ExitToApp, contentDescription = "Switch profile")
                         Spacer(modifier = Modifier.width(4.dp))
@@ -3395,9 +3888,9 @@ fun DriverDashboard(
     val orderHistory by viewModel.orderHistory.collectAsStateWithLifecycle()
     val trackingProgress by viewModel.trackingProgress.collectAsStateWithLifecycle()
 
-    val claimableOrders = orderHistory.filter { it.status == "READY_FOR_PICKUP" || it.status == "PREPARING" }
-    val myActiveOrders = orderHistory.filter { it.status == "OUT_FOR_DELIVERY" }
-    val myCompletedOrders = orderHistory.filter { it.status == "COMPLETED" }
+    val claimableOrders = orderHistory.filter { (it.status == "READY_FOR_PICKUP" || it.status == "PREPARING") && it.driverId == null }
+    val myActiveOrders = orderHistory.filter { it.status == "OUT_FOR_DELIVERY" && it.driverId == driver.driverId }
+    val myCompletedOrders = orderHistory.filter { it.status == "COMPLETED" && it.driverId == driver.driverId }
 
     Scaffold(
         topBar = {
@@ -3564,11 +4057,478 @@ fun DriverDashboard(
                             Text("Est Payout: $2.00 (Standard Delivery Surcharge)", fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary, fontSize = 12.sp)
 
                             Button(
-                                onClick = { viewModel.updateOrderStatusManual(job.id, "OUT_FOR_DELIVERY") },
+                                onClick = { viewModel.claimOrderManual(job.id, driver.driverId, driver.driverName) },
                                 modifier = Modifier.fillMaxWidth(),
                                 enabled = job.status == "READY_FOR_PICKUP"
                             ) {
                                 Text(if (job.status == "READY_FOR_PICKUP") "Pick up & Start Journey" else "Waiting for kitchen to finish cooking...")
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun WebDashboardSimulatorDialog(
+    onDismiss: () -> Unit,
+    viewModel: BiteDashViewModel
+) {
+    val orders by viewModel.orderHistory.collectAsStateWithLifecycle()
+    val restaurants by viewModel.restaurantsState.collectAsStateWithLifecycle()
+    val drivers by viewModel.driversState.collectAsStateWithLifecycle()
+    val payoutSchedule by viewModel.payoutSchedule.collectAsStateWithLifecycle()
+    val isPayoutInProgress by viewModel.isPayoutInProgress.collectAsStateWithLifecycle()
+
+    var activeWebTab by remember { mutableStateOf(0) } // 0: Restaurant Center, 1: Rider Statement, 2: Admin Escrow Console
+    var selectedWebRestaurantId by remember { mutableStateOf<String?>(null) }
+    var selectedWebDriverId by remember { mutableStateOf<Int?>(null) }
+
+    LaunchedEffect(restaurants) {
+        if (restaurants.isNotEmpty() && selectedWebRestaurantId == null) {
+            selectedWebRestaurantId = restaurants.first().id
+        }
+    }
+    LaunchedEffect(drivers) {
+        if (drivers.isNotEmpty() && selectedWebDriverId == null) {
+            selectedWebDriverId = drivers.first().id
+        }
+    }
+
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Surface(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color(0xFFF1F5F9))
+        ) {
+            Column(modifier = Modifier.fillMaxSize()) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(Color(0xFF1E293B))
+                        .padding(horizontal = 14.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                        Box(modifier = Modifier.size(10.dp).clip(CircleShape).background(Color(0xFFEF4444)))
+                        Box(modifier = Modifier.size(10.dp).clip(CircleShape).background(Color(0xFFF59E0B)))
+                        Box(modifier = Modifier.size(10.dp).clip(CircleShape).background(Color(0xFF10B981)))
+                    }
+
+                    Spacer(modifier = Modifier.width(4.dp))
+
+                    Row(
+                        modifier = Modifier
+                            .weight(1f)
+                            .background(Color(0xFF334155), RoundedCornerShape(20.dp))
+                            .padding(horizontal = 12.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Icon(Icons.Default.Lock, contentDescription = "Secure padlock", tint = Color(0xFF10B981), modifier = Modifier.size(12.dp))
+                        Text(
+                            "https://bitedash.co.zw/portal-dashboard",
+                            color = Color(0xFF94A3B8),
+                            fontSize = 11.sp,
+                            maxLines = 1
+                        )
+                    }
+
+                    IconButton(
+                        onClick = onDismiss,
+                        modifier = Modifier.size(24.dp)
+                    ) {
+                        Icon(Icons.Default.Close, contentDescription = "Close window", tint = Color.White, modifier = Modifier.size(18.dp))
+                    }
+                }
+
+                Row(modifier = Modifier.fillMaxWidth().weight(1f)) {
+                    Column(
+                        modifier = Modifier
+                            .width(200.dp)
+                            .fillMaxHeight()
+                            .background(Color(0xFF0F172A))
+                            .padding(vertical = 16.dp, horizontal = 12.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text(
+                            "💻 BiteDash Web",
+                            color = Color.White,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 14.sp,
+                            modifier = Modifier.padding(bottom = 12.dp, start = 8.dp)
+                        )
+
+                        listOf(
+                            Triple(0, "🏬 Restaurant Center", Icons.Default.Home),
+                            Triple(1, "🛵 Rider Statement", Icons.Default.Person),
+                            Triple(2, "💼 Admin Escrow Console", Icons.Default.Settings)
+                        ).forEach { (idx, label, icon) ->
+                            val isActive = activeWebTab == idx
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(if (isActive) Color(0xFF334155) else Color.Transparent)
+                                    .clickable { activeWebTab = idx }
+                                    .padding(vertical = 10.dp, horizontal = 10.dp),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(icon, contentDescription = label, tint = if (isActive) Color.White else Color(0xFF94A3B8), modifier = Modifier.size(16.dp))
+                                Text(label, color = if (isActive) Color.White else Color(0xFF94A3B8), fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.weight(1f))
+
+                        Text(
+                            "Multi-Device Sync Live",
+                            color = Color(0xFF10B981),
+                            fontSize = 9.sp,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(start = 8.dp)
+                        )
+                    }
+
+                    Column(
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxHeight()
+                            .background(Color(0xFFF8FAFC))
+                            .padding(20.dp)
+                    ) {
+                        when (activeWebTab) {
+                            0 -> {
+                                Text("🏬 Restaurant Cloud Management Portal", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = Color(0xFF1E293B))
+                                Text("Select and configure active kitchen menus, audit real-time orders, and modify USD pricing live.", style = MaterialTheme.typography.bodySmall, color = Color.Gray, modifier = Modifier.padding(bottom = 16.dp))
+
+                                if (restaurants.isEmpty()) {
+                                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                        Text("No registered restaurants available in SQLite database.", color = Color.Gray, fontSize = 12.sp)
+                                    }
+                                } else {
+                                    val matchedRestaurant = restaurants.find { it.id == selectedWebRestaurantId } ?: restaurants.first()
+                                    
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp),
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text("Acting Kitchen:", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                        restaurants.forEach { r ->
+                                            val isSelected = r.id == matchedRestaurant.id
+                                            OutlinedButton(
+                                                onClick = { selectedWebRestaurantId = r.id },
+                                                border = BorderStroke(1.dp, if (isSelected) MaterialTheme.colorScheme.primary else Color.LightGray),
+                                                colors = ButtonDefaults.outlinedButtonColors(
+                                                    containerColor = if (isSelected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent
+                                                ),
+                                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
+                                            ) {
+                                                Text(r.name, fontSize = 9.sp)
+                                            }
+                                        }
+                                    }
+
+                                    Divider(color = Color.LightGray.copy(alpha = 0.5f))
+
+                                    Spacer(modifier = Modifier.height(10.dp))
+
+                                    Row(modifier = Modifier.fillMaxWidth().weight(1f), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                                        Card(
+                                            modifier = Modifier.weight(1.2f).fillMaxHeight(),
+                                            colors = CardDefaults.cardColors(containerColor = Color.White),
+                                            border = BorderStroke(1.dp, Color.LightGray.copy(alpha = 0.5f))
+                                        ) {
+                                            Column(modifier = Modifier.padding(12.dp)) {
+                                                Text("Dish USD Price Editor", fontWeight = FontWeight.Bold, fontSize = 11.sp, color = Color(0xFF1E293B))
+                                                Text("Changes take effect instantly on client apps.", fontSize = 9.sp, color = Color.Gray, modifier = Modifier.padding(bottom = 8.dp))
+                                                
+                                                LazyColumn(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                                    items(matchedRestaurant.menuItems) { dish ->
+                                                        Row(
+                                                            modifier = Modifier
+                                                                .fillMaxWidth()
+                                                                .background(Color(0xFFF1F5F9), RoundedCornerShape(6.dp))
+                                                                .padding(6.dp),
+                                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                                            verticalAlignment = Alignment.CenterVertically
+                                                        ) {
+                                                            Column(modifier = Modifier.weight(1f)) {
+                                                                Text(dish.name, fontSize = 10.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
+                                                                Text("USD $${String.format(Locale.US, "%.2f", dish.price)}", fontSize = 9.sp, color = Color.Gray)
+                                                            }
+                                                            Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
+                                                                IconButton(
+                                                                    onClick = {
+                                                                        val updated = matchedRestaurant.menuItems.map {
+                                                                            if (it.name == dish.name) it.copy(price = (it.price - 0.50).coerceAtLeast(1.0)) else it
+                                                                        }
+                                                                        viewModel.updateRestaurantMenu(matchedRestaurant.id, updated)
+                                                                    },
+                                                                    modifier = Modifier.size(24.dp)
+                                                                ) {
+                                                                    Text("-", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                                                                }
+                                                                IconButton(
+                                                                    onClick = {
+                                                                        val updated = matchedRestaurant.menuItems.map {
+                                                                            if (it.name == dish.name) it.copy(price = it.price + 0.50) else it
+                                                                        }
+                                                                        viewModel.updateRestaurantMenu(matchedRestaurant.id, updated)
+                                                                    },
+                                                                    modifier = Modifier.size(24.dp)
+                                                                ) {
+                                                                    Text("+", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+
+                                        Card(
+                                            modifier = Modifier.weight(1f).fillMaxHeight(),
+                                            colors = CardDefaults.cardColors(containerColor = Color.White),
+                                            border = BorderStroke(1.dp, Color.LightGray.copy(alpha = 0.5f))
+                                        ) {
+                                            Column(modifier = Modifier.padding(12.dp)) {
+                                                val kitchenOrders = orders.filter { it.restaurantName.trim().lowercase() == matchedRestaurant.name.trim().lowercase() }
+                                                Text("Live Kitchen Queue (${kitchenOrders.size})", fontWeight = FontWeight.Bold, fontSize = 11.sp, color = Color(0xFF1E293B))
+                                                Text("Current pending and preparable dining tickets.", fontSize = 9.sp, color = Color.Gray, modifier = Modifier.padding(bottom = 8.dp))
+                                                
+                                                if (kitchenOrders.isEmpty()) {
+                                                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                                        Text("No tickets in queue", color = Color.Gray, fontSize = 9.sp)
+                                                    }
+                                                } else {
+                                                    LazyColumn(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                                        items(kitchenOrders) { order ->
+                                                            Column(
+                                                                modifier = Modifier
+                                                                    .fillMaxWidth()
+                                                                    .border(1.dp, Color.LightGray.copy(alpha = 0.3f), RoundedCornerShape(6.dp))
+                                                                    .padding(6.dp)
+                                                            ) {
+                                                                Text("Order #${order.id} • ${order.status}", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                                                                Text(order.itemsSummary, fontSize = 9.sp, maxLines = 1)
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            1 -> {
+                                Text("🛵 Rider Hub Weekly Earnings Statement", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = Color(0xFF1E293B))
+                                Text("Riders can access their statements, monitor total deliveries completed, verify payout schedules, and check EcoCash numbers.", style = MaterialTheme.typography.bodySmall, color = Color.Gray, modifier = Modifier.padding(bottom = 16.dp))
+
+                                if (drivers.isEmpty()) {
+                                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                        Text("No active drivers found. Build some in Admin portal first!", color = Color.Gray, fontSize = 12.sp)
+                                    }
+                                } else {
+                                    val matchedDriver = drivers.find { it.id == selectedWebDriverId } ?: drivers.first()
+                                    
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp),
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text("Acting Rider:", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                        drivers.forEach { d ->
+                                            val isSelected = d.id == matchedDriver.id
+                                            OutlinedButton(
+                                                onClick = { selectedWebDriverId = d.id },
+                                                border = BorderStroke(1.dp, if (isSelected) MaterialTheme.colorScheme.primary else Color.LightGray),
+                                                colors = ButtonDefaults.outlinedButtonColors(
+                                                    containerColor = if (isSelected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent
+                                                ),
+                                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
+                                            ) {
+                                                Text(d.name, fontSize = 9.sp)
+                                            }
+                                        }
+                                    }
+
+                                    Divider(color = Color.LightGray.copy(alpha = 0.5f))
+
+                                    Spacer(modifier = Modifier.height(12.dp))
+
+                                    val riderRuns = orders.filter { it.driverId == matchedDriver.id && it.status == "COMPLETED" }
+                                    val riderTips = riderRuns.sumOf { it.driverTip }
+                                    val riderFees = riderRuns.size * 2.00
+                                    val totalDue = riderFees + riderTips
+                                    
+                                    val unsettledRiderRuns = orders.filter { it.driverId == matchedDriver.id && it.status == "COMPLETED" && !it.isSettled }
+                                    val unsettledDue = unsettledRiderRuns.size * 2.00 + unsettledRiderRuns.sumOf { it.driverTip }
+
+                                    Row(modifier = Modifier.fillMaxWidth().weight(1f), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                                        Card(
+                                            modifier = Modifier.weight(1f).fillMaxHeight(),
+                                            colors = CardDefaults.cardColors(containerColor = Color.White),
+                                            border = BorderStroke(1.dp, Color.LightGray.copy(alpha = 0.5f))
+                                        ) {
+                                            Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                                Text("Weekly Rider Statement", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = Color(0xFF1E293B))
+                                                Text("Settle ID: ${matchedDriver.phone}@ecocash", fontSize = 10.sp, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Medium)
+                                                
+                                                Divider(color = Color.LightGray.copy(alpha = 0.3f), modifier = Modifier.padding(vertical = 4.dp))
+                                                
+                                                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                                    Text("Completed Runs:", fontSize = 11.sp, color = Color.Gray)
+                                                    Text("${riderRuns.size} Deliveries", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                                }
+                                                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                                    Text("Delivery Fuel Fee Surcharge:", fontSize = 11.sp, color = Color.Gray)
+                                                    Text("USD $${String.format(Locale.US, "%.2f", riderFees)}", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                                }
+                                                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                                    Text("100% Customer Tips:", fontSize = 11.sp, color = Color.Gray)
+                                                    Text("USD $${String.format(Locale.US, "%.2f", riderTips)}", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                                }
+                                                
+                                                Divider(color = Color.LightGray.copy(alpha = 0.3f), modifier = Modifier.padding(vertical = 4.dp))
+                                                
+                                                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                                    Text("Historic Earnings:", fontSize = 11.sp, color = Color.Gray)
+                                                    Text("USD $${String.format(Locale.US, "%.2f", totalDue)}", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.Gray)
+                                                }
+
+                                                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                                    Text("Current Unsettled Escrow Pending:", fontSize = 11.sp, color = Color.DarkGray, fontWeight = FontWeight.SemiBold)
+                                                    Text("USD $${String.format(Locale.US, "%.2f", unsettledDue)}", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                                                }
+                                                
+                                                Spacer(modifier = Modifier.height(10.dp))
+                                                
+                                                Text("Settlements are triggered by Admin to EcoCash / InnBucks wallet based on payout schedule ($payoutSchedule).", fontSize = 9.sp, color = Color.Gray)
+                                            }
+                                        }
+
+                                        Card(
+                                            modifier = Modifier.weight(1f).fillMaxHeight(),
+                                            colors = CardDefaults.cardColors(containerColor = Color.White),
+                                            border = BorderStroke(1.dp, Color.LightGray.copy(alpha = 0.5f))
+                                        ) {
+                                            Column(modifier = Modifier.padding(14.dp)) {
+                                                Text("Historic Runs List", fontWeight = FontWeight.Bold, fontSize = 11.sp, color = Color(0xFF1E293B))
+                                                Spacer(modifier = Modifier.height(8.dp))
+                                                
+                                                if (riderRuns.isEmpty()) {
+                                                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                                        Text("No completed jobs on record.", color = Color.Gray, fontSize = 9.sp)
+                                                    }
+                                                } else {
+                                                    LazyColumn(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                                        items(riderRuns) { order ->
+                                                            Row(
+                                                                modifier = Modifier
+                                                                    .fillMaxWidth()
+                                                                    .border(1.dp, Color.LightGray.copy(alpha = 0.3f), RoundedCornerShape(6.dp))
+                                                                    .padding(6.dp),
+                                                                horizontalArrangement = Arrangement.SpaceBetween
+                                                            ) {
+                                                                Column {
+                                                                    Text("Job #${order.id} • ${order.restaurantName}", fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                                                                    Text("Cargo: ${order.itemsSummary}", fontSize = 8.sp, color = Color.Gray, maxLines = 1)
+                                                                }
+                                                                Text("USD $${String.format(Locale.US, "%.2f", 2.00 + order.driverTip)}", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            2 -> {
+                                Text("💻 Platform Admin Central Escrow Management Console", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = Color(0xFF1E293B))
+                                Text("This admin interface provides visual escrow stats and automated mobile wallet distribution of EcoCash, OneMoney, InnBucks, and CABS bank payouts Zimbabwe-wide.", style = MaterialTheme.typography.bodySmall, color = Color.Gray, modifier = Modifier.padding(bottom = 14.dp))
+
+                                val unsettledTotal = orders.filter { it.status == "COMPLETED" && !it.isSettled }.sumOf { it.totalCost }
+                                
+                                Card(
+                                    modifier = Modifier.fillMaxWidth().weight(1f),
+                                    colors = CardDefaults.cardColors(containerColor = Color.White),
+                                    border = BorderStroke(1.dp, Color.LightGray.copy(alpha = 0.5f))
+                                ) {
+                                    Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                        Text("Escrow Ledger & Wallet Distribution Settle", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = Color(0xFF1E293B))
+                                        
+                                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                            Column {
+                                                Text("BiteDash Central Holding (All Channels):", fontSize = 10.sp, color = Color.Gray)
+                                                Text("USD $${String.format(Locale.US, "%.2f", unsettledTotal)}", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                                            }
+                                            Card(
+                                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.5f))
+                                            ) {
+                                                Text("Schedule: $payoutSchedule", fontSize = 10.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(8.dp), color = MaterialTheme.colorScheme.onSecondaryContainer)
+                                            }
+                                        }
+
+                                        Divider(color = Color.LightGray.copy(alpha = 0.3f))
+
+                                        Text("Zimbabwe Bulk payment distribution triggers via API nodes instantly:", fontSize = 10.sp, color = Color.Gray)
+                                        
+                                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                                            Card(modifier = Modifier.weight(1f), border = BorderStroke(1.dp, Color.LightGray.copy(alpha = 0.2f)), colors = CardDefaults.cardColors(containerColor = Color(0xFFF8FAFC))) {
+                                                Column(modifier = Modifier.padding(10.dp)) {
+                                                    Text("📲 EcoCash Merchant Bulk", fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                                    Text("EcoCash: 1.5% Settlement Surcharge", fontSize = 8.sp, color = Color.Gray)
+                                                }
+                                            }
+                                            Card(modifier = Modifier.weight(1f), border = BorderStroke(1.dp, Color.LightGray.copy(alpha = 0.2f)), colors = CardDefaults.cardColors(containerColor = Color(0xFFF8FAFC))) {
+                                                Column(modifier = Modifier.padding(10.dp)) {
+                                                    Text("🪙 InnBucks Core Payout", fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                                    Text("Instant USSD settlement route", fontSize = 8.sp, color = Color.Gray)
+                                                }
+                                            }
+                                            Card(modifier = Modifier.weight(1f), border = BorderStroke(1.dp, Color.LightGray.copy(alpha = 0.2f)), colors = CardDefaults.cardColors(containerColor = Color(0xFFF8FAFC))) {
+                                                Column(modifier = Modifier.padding(10.dp)) {
+                                                    Text("💸 ZIPIT / CABS Bank", fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                                    Text("Electronic interbank clearing node", fontSize = 8.sp, color = Color.Gray)
+                                                }
+                                            }
+                                        }
+
+                                        Spacer(modifier = Modifier.weight(1f))
+
+                                        if (isPayoutInProgress) {
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.2f)).padding(10.dp),
+                                                horizontalArrangement = Arrangement.Center,
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                                                Spacer(modifier = Modifier.width(6.dp))
+                                                Text("Broadcasting mobile payout packages... Syncing ledger to phone nodes", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                                            }
+                                        } else {
+                                            Button(
+                                                onClick = { viewModel.triggerPayoutSettlement() },
+                                                modifier = Modifier.fillMaxWidth(),
+                                                enabled = unsettledTotal > 0,
+                                                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
+                                            ) {
+                                                Text("Disburse held funds to matching restaurants & riders", fontSize = 11.sp)
+                                            }
+                                        }
+                                    }
+                                }
                             }
                         }
                     }

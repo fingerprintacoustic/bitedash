@@ -13,5 +13,8 @@ data class OrderEntity(
     val paymentPhone: String,
     val status: String,
     val driverTip: Double = 0.0,
-    val timestamp: Long = System.currentTimeMillis()
+    val timestamp: Long = System.currentTimeMillis(),
+    val driverId: Int? = null,
+    val driverName: String? = null,
+    val isSettled: Boolean = false
 )

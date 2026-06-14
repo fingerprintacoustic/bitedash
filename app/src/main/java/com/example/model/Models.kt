@@ -19,7 +19,9 @@ data class Restaurant(
     val location: String, // e.g. "Belgravia", "Avondale", "Harare CBD"
     val menuItems: List<MenuItem>,
     val imageKeyword: String, // Used to decide background colors or graphics if icons aren't available
-    val displayOrder: Int = 0
+    val displayOrder: Int = 0,
+    val ownerUsername: String = "owner",
+    val ownerPassword: String = "password"
 )
 
 data class CartItem(

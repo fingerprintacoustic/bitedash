@@ -20,6 +20,14 @@ class OrderRepository(private val orderDao: OrderDao) {
         orderDao.updateOrderStatus(orderId, status)
     }
 
+    suspend fun claimOrder(orderId: Int, driverId: Int, driverName: String, status: String) {
+        orderDao.claimOrder(orderId, driverId, driverName, status)
+    }
+
+    suspend fun markCompletedOrdersAsSettled() {
+        orderDao.markCompletedOrdersAsSettled()
+    }
+
     suspend fun getOrderById(orderId: Int): OrderEntity? {
         return orderDao.getOrderById(orderId)
     }
