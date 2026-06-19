@@ -1,0 +1,161 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // ==================== HELPER FUNCTIONS ====================
+    
+    // Check if user is authenticated
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    // Check if user is an admin (using custom claim or a specific admin document)
+    function isAdmin() {
+      return isAuthenticated() && 
+        (request.auth.token.admin == true || 
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin');
+    }
+    
+    // Check if user is a restaurant owner
+    function isRestaurantOwner() {
+      return isAuthenticated() && 
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'restaurant_owner';
+    }
+    
+    // Check if user is a driver
+    function isDriver() {
+      return isAuthenticated() && 
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'driver';
+    }
+    
+    // ==================== RESTAURANTS ====================
+    
+    match /restaurants/{restaurantId} {
+      // Anyone can read active restaurants (public menu viewing)
+      allow read: if resource.data.isActive == true;
+      
+      // Only authenticated users can list restaurants
+      allow list: if isAuthenticated();
+      
+      // Restaurant owners can update their own restaurants
+      allow update: if isRestaurantOwner() && 
+        resource.data.ownerId == request.auth.uid;
+      
+      // Admin can create/update/delete any restaurant
+      allow create, update, delete: if isAdmin();
+    }
+    
+    // ==================== DRIVERS ====================
+    
+    match /drivers/{driverId} {
+      // Drivers can read their own profile
+      allow read: if isAuthenticated() && 
+        resource.data.userId == request.auth.uid;
+      
+      // Admin can list all drivers
+      allow list: if isAdmin();
+      
+      // Drivers can update their own payout info (EcoCash, OneMoney numbers)
+      allow update: if isDriver() && 
+        resource.data.userId == request.auth.uid &&
+        // Only allow updating payout-related fields
+        request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['ecoCashNumber', 'oneMoneyNumber', 'updatedAt']);
+      
+      // Admin can manage drivers
+      allow create, update, delete: if isAdmin();
+    }
+    
+    // ==================== ORDERS ====================
+    
+    match /orders/{orderId} {
+      // Customers can read their own orders
+      allow read: if isAuthenticated() && 
+        resource.data.customerId == request.auth.uid;
+      
+      // Restaurant owners can read orders for their restaurant
+      allow read: if isRestaurantOwner() && 
+        resource.data.restaurantId in 
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.ownedRestaurants;
+      
+      // Drivers can read orders assigned to them
+      allow read: if isDriver() && 
+        resource.data.driverId == request.auth.uid;
+      
+      // Admin can read all orders
+      allow read: if isAdmin();
+      
+      // Customers can create orders
+      allow create: if isAuthenticated() && 
+        request.resource.data.customerId == request.auth.uid;
+      
+      // Restaurant owners can update order status (accept, prepare, complete)
+      allow update: if isRestaurantOwner() && 
+        resource.data.restaurantId in 
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.ownedRestaurants &&
+        // Only allow updating status fields
+        request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['status', 'updatedAt']);
+      
+      // Drivers can update order status (pickup, deliver)
+      allow update: if isDriver() && 
+        resource.data.driverId == request.auth.uid &&
+        request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['status', 'driverId', 'driverName', 'updatedAt']);
+      
+      // Admin can update any order status
+      allow update: if isAdmin();
+      
+      // No one can delete orders (audit trail)
+      allow delete: if false;
+    }
+    
+    // ==================== TRANSACTIONS ====================
+    
+    match /transactions/{transactionId} {
+      // Transactions are only readable by admin and relevant parties
+      allow read: if isAdmin();
+      
+      // Transactions are created by the system (Cloud Functions)
+      allow create: if isAdmin();
+      
+      // Transactions can only be updated by admin (for settlement status)
+      allow update: if isAdmin();
+      
+      // No deletion of transactions (audit trail)
+      allow delete: if false;
+    }
+    
+    // ==================== ADMIN SETTINGS ====================
+    
+    match /admin_settings/{settingsId} {
+      // Admin settings are only readable by authenticated users (needed for app config)
+      allow read: if isAuthenticated();
+      
+      // Only admin can update settings
+      allow write: if isAdmin();
+    }
+    
+    // ==================== USERS (for role management) ====================
+    
+    match /users/{userId} {
+      // Users can read their own profile
+      allow read: if isAuthenticated() && request.auth.uid == userId;
+      
+      // Users can update their own profile (except role)
+      allow update: if isAuthenticated() && request.auth.uid == userId &&
+        request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['displayName', 'phone', 'address', 'ecoCashNumber', 'oneMoneyNumber', 'updatedAt']);
+      
+      // Admin can manage all user profiles
+      allow write: if isAdmin();
+    }
+    
+    // ==================== PENDING_PAYOUTS (for bulk disbursement tracking) ====================
+    
+    match /pending_payouts/{payoutId} {
+      // Only admin can read/write pending payouts
+      allow read, write: if isAdmin();
+    }
+  }
+}
