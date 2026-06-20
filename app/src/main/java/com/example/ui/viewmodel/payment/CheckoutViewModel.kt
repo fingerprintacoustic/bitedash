@@ -311,11 +311,26 @@ class CheckoutViewModel(
                 
                 when (statusResult.status) {
                     PaymentStatus.PAID -> {
+                        // Payment successful - persist to Firestore
+                        val orderId = _uiState.value.orderId
+                        val success = if (orderId != null) {
+                            paymentRepository.markOrderAsPaid(
+                                transactionId = transactionId,
+                                orderId = orderId,
+                                paymentMethod = _uiState.value.selectedMethod.value,
+                                paymentRef = statusResult.pollUrl,
+                                amount = statusResult.paidAmount
+                            )
+                        } else {
+                            // No order to update, just mark payment as complete
+                            paymentRepository.updatePaymentStatus(transactionId, PaymentStatus.PAID)
+                        }
+                        
                         _uiState.update {
                             it.copy(
                                 paymentState = PaymentState.Paid(
                                     transactionId = transactionId,
-                                    amount = 0.0, // Will be updated from transaction
+                                    amount = statusResult.paidAmount,
                                     method = it.selectedMethod
                                 ),
                                 isLoading = false

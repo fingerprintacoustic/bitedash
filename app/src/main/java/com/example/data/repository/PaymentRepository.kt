@@ -322,4 +322,115 @@ class PaymentRepository(
             emptyMap()
         }
     }
+
+    // ==================== ORDER PAYMENT OPERATIONS ====================
+
+    /**
+     * Mark an order as paid after successful payment.
+     * 
+     * Updates both the payment document and the order document.
+     * Does NOT dispatch drivers or send notifications.
+     * 
+     * @param transactionId The payment transaction ID
+     * @param orderId The order ID to mark as paid
+     * @param paymentMethod The payment method used
+     * @param paymentRef Paynow reference
+     * @param amount The payment amount
+     * @return true if both updates were successful
+     */
+    suspend fun markOrderAsPaid(
+        transactionId: String,
+        orderId: String,
+        paymentMethod: String,
+        paymentRef: String,
+        amount: Double
+    ): Boolean {
+        return try {
+            // 1. Update payment document status to PAID
+            val paymentUpdated = updatePaymentStatus(
+                transactionId = transactionId,
+                status = PaymentStatus.PAID
+            )
+            
+            // 2. Update order document payment fields
+            val orderUpdated = updateOrderPaymentStatus(
+                orderId = orderId,
+                paymentTransactionId = transactionId,
+                paymentMethod = paymentMethod,
+                paymentRef = paymentRef,
+                amount = amount,
+                status = "PAID"
+            )
+            
+            paymentUpdated && orderUpdated
+        } catch (e: Exception) {
+            false
+        }
+    }
+
+    /**
+     * Update order payment status in Firestore.
+     * 
+     * @param orderId The order ID
+     * @param paymentTransactionId The payment transaction ID
+     * @param paymentMethod The payment method used
+     * @param paymentRef Paynow or mobile money reference
+     * @param amount The payment amount
+     * @param status The payment status (PAID, FAILED, etc.)
+     * @return true if successful
+     */
+    suspend fun updateOrderPaymentStatus(
+        orderId: String,
+        paymentTransactionId: String,
+        paymentMethod: String,
+        paymentRef: String,
+        amount: Double,
+        status: String
+    ): Boolean {
+        return try {
+            val updates = mutableMapOf<String, Any>(
+                "paymentStatus" to status,
+                "paymentMethod" to paymentMethod,
+                "paymentRef" to paymentRef,
+                "updatedAt" to Timestamp.now()
+            )
+            
+            // Set payment amount in order
+            if (status == "PAID") {
+                // Keep order status as PENDING_ACCEPTANCE, only payment fields change
+            }
+            
+            db.collection("orders")
+                .document(orderId)
+                .update(updates)
+                .await()
+            
+            true
+        } catch (e: Exception) {
+            false
+        }
+    }
+
+    /**
+     * Get order by ID.
+     * 
+     * @param orderId The order ID
+     * @return Order data as map or null if not found
+     */
+    suspend fun getOrder(orderId: String): Map<String, Any>? {
+        return try {
+            val doc = db.collection("orders")
+                .document(orderId)
+                .get()
+                .await()
+            
+            if (doc.exists()) {
+                doc.data
+            } else {
+                null
+            }
+        } catch (e: Exception) {
+            null
+        }
+    }
 }

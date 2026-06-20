@@ -56,6 +56,7 @@ sealed class PaymentValidation {
  * UI model for displaying payment options.
  */
 data class PaymentUiState(
+    val orderId: String? = null,
     val paymentState: PaymentState = PaymentState.Idle,
     val selectedMethod: PaymentMethod = PaymentMethod.PAYNOW,
     val validation: PaymentValidation = PaymentValidation.Valid,
