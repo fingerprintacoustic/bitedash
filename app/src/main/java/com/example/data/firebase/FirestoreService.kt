@@ -67,6 +67,24 @@ class FirestoreService {
         }
     }
 
+    suspend fun getUserByEmail(email: String): FirestoreUser? {
+        return try {
+            val querySnapshot = db.collection(COLLECTION_USERS)
+                .whereEqualTo("email", email)
+                .limit(1)
+                .get()
+                .await()
+            
+            if (!querySnapshot.isEmpty) {
+                querySnapshot.documents.firstOrNull()?.toObject(FirestoreUser::class.java)
+            } else {
+                null
+            }
+        } catch (e: Exception) {
+            null
+        }
+    }
+
     suspend fun createUser(user: FirestoreUser): String? {
         return try {
             val docRef = db.collection(COLLECTION_USERS).add(user).await()

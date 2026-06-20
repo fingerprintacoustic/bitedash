@@ -35,9 +35,27 @@ sealed interface PaymentStep {
 sealed interface UserProfile {
     object Idle : UserProfile
     object Customer : UserProfile
-    data class RestaurantOwner(val restaurantId: String, val restaurantName: String) : UserProfile
-    data class Driver(val driverId: Int, val driverName: String) : UserProfile
-    object Admin : UserProfile
+    data class RestaurantOwner(
+        val restaurantId: String, 
+        val restaurantName: String,
+        val firebaseUid: String = "" // Firebase Auth UID when authenticated
+    ) : UserProfile
+    data class Driver(
+        val driverId: Int, 
+        val driverName: String,
+        val firebaseUid: String = "" // Firebase Auth UID when authenticated
+    ) : UserProfile
+    data class Admin(
+        val firebaseUid: String = "" // Firebase Auth UID when authenticated
+    ) : UserProfile
+    
+    fun getFirebaseUid(): String? = when (this) {
+        is Idle -> null
+        is Customer -> null
+        is RestaurantOwner -> firebaseUid.takeIf { it.isNotEmpty() }
+        is Driver -> firebaseUid.takeIf { it.isNotEmpty() }
+        is Admin -> firebaseUid.takeIf { it.isNotEmpty() }
+    }
 }
 
 class BiteDashViewModel(application: Application) : AndroidViewModel(application) {

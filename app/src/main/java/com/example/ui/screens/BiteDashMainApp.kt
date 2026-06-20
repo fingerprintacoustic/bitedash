@@ -47,6 +47,8 @@ import com.example.ui.theme.*
 import com.example.ui.viewmodel.BiteDashViewModel
 import com.example.ui.viewmodel.PaymentStep
 import com.example.ui.viewmodel.UserProfile
+import com.example.ui.viewmodel.AuthViewModel
+import com.example.ui.viewmodel.UserRole
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -55,13 +57,25 @@ import java.util.Locale
 @Composable
 fun BiteDashMainApp(
     viewModel: BiteDashViewModel,
+    authViewModel: AuthViewModel? = null,
+    userRole: UserRole = UserRole.CUSTOMER,
     modifier: Modifier = Modifier
 ) {
     val currentProfile by viewModel.currentProfile.collectAsStateWithLifecycle()
+    val isAuthenticated = authViewModel?.isAuthenticated() == true
+
+    // If not authenticated and auth is available, show auth gate
+    if (authViewModel != null && !isAuthenticated && currentProfile is UserProfile.Idle) {
+        AuthenticationGate(
+            authViewModel = authViewModel,
+            onAuthenticated = { /* Auth handled via state */ }
+        )
+        return
+    }
 
     when (val profile = currentProfile) {
         is UserProfile.Idle -> {
-            RoleSelectionGate(viewModel = viewModel)
+            RoleSelectionGate(viewModel = viewModel, authViewModel = authViewModel, userRole = userRole)
         }
         is UserProfile.RestaurantOwner -> {
             RestaurantOwnerDashboard(owner = profile, viewModel = viewModel)
@@ -3021,10 +3035,22 @@ fun EditMenuDialog(
 // ==================== ROLE-BASED ACCESS CONTROL PORTALS ====================
 
 @Composable
-fun RoleSelectionGate(viewModel: BiteDashViewModel) {
+fun RoleSelectionGate(
+    viewModel: BiteDashViewModel,
+    authViewModel: AuthViewModel? = null,
+    userRole: UserRole = UserRole.CUSTOMER
+) {
     val restaurants by viewModel.restaurantsState.collectAsStateWithLifecycle()
     val drivers by viewModel.driversState.collectAsStateWithLifecycle()
     val isManualMode by viewModel.isManualMode.collectAsStateWithLifecycle()
+    
+    // Check if user is authenticated and use their role
+    val isAuthenticated = authViewModel?.isAuthenticated() == true
+    val currentUserRole = if (isAuthenticated) {
+        authViewModel?.getCurrentRole() ?: userRole
+    } else {
+        userRole
+    }
 
     var adminPinInput by remember { mutableStateOf("") }
     var adminPinError by remember { mutableStateOf("") }
