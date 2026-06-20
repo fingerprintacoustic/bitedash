@@ -15,12 +15,13 @@ import kotlinx.coroutines.launch
  * Handles:
  * - Loading available orders (READY_FOR_PICKUP)
  * - Accepting deliveries
+ * - Picking up orders
+ * - Marking deliveries as complete
  * 
  * Does NOT:
  * - Implement GPS tracking
  * - Send notifications
- * - Complete deliveries
- * - Assign drivers automatically
+ * - Implement maps
  * 
  * @property firestoreService Firestore service instance
  * @property driverId The current driver's ID
@@ -161,6 +162,94 @@ class DriverDeliveryViewModel(
                     it.copy(
                         actionInProgress = null,
                         errorMessage = "Failed to accept delivery: ${e.message}"
+                    )
+                }
+            }
+        }
+    }
+    
+    /**
+     * Pick up an assigned delivery.
+     * Updates order with deliveryStatus = PICKED_UP.
+     */
+    fun pickupOrder(orderId: String) {
+        viewModelScope.launch {
+            _uiState.update { it.copy(actionInProgress = orderId) }
+            
+            try {
+                val success = firestoreService.updateDeliveryStatus(
+                    orderId = orderId,
+                    deliveryStatus = "PICKED_UP"
+                )
+                
+                if (success) {
+                    _uiState.update { state ->
+                        state.copy(
+                            myDeliveries = state.myDeliveries.map { order ->
+                                if (order.orderId == orderId) {
+                                    order.copy(deliveryStatus = DriverDeliveryStatus.PICKED_UP)
+                                } else {
+                                    order
+                                }
+                            },
+                            actionInProgress = null,
+                            successMessage = "Order picked up!"
+                        )
+                    }
+                } else {
+                    _uiState.update {
+                        it.copy(
+                            actionInProgress = null,
+                            errorMessage = "Failed to mark order as picked up"
+                        )
+                    }
+                }
+            } catch (e: Exception) {
+                _uiState.update {
+                    it.copy(
+                        actionInProgress = null,
+                        errorMessage = "Failed to mark picked up: ${e.message}"
+                    )
+                }
+            }
+        }
+    }
+    
+    /**
+     * Complete a delivery.
+     * Updates order with deliveryStatus = DELIVERED.
+     */
+    fun completeDelivery(orderId: String) {
+        viewModelScope.launch {
+            _uiState.update { it.copy(actionInProgress = orderId) }
+            
+            try {
+                val success = firestoreService.updateDeliveryStatus(
+                    orderId = orderId,
+                    deliveryStatus = "DELIVERED"
+                )
+                
+                if (success) {
+                    _uiState.update { state ->
+                        state.copy(
+                            myDeliveries = state.myDeliveries.filter { it.orderId != orderId },
+                            actionInProgress = null,
+                            successMessage = "Delivery completed!"
+                        )
+                    }
+                } else {
+                    _uiState.update {
+                        it.copy(
+                            actionInProgress = null,
+                            errorMessage = "Failed to complete delivery"
+                        )
+                    }
+                }
+            } catch (e: Exception) {
+                _uiState.update {
+                    it.copy(
+                        actionInProgress = null,
+                        errorMessage = "Failed to complete delivery: ${e.message}"
                     )
                 }
             }

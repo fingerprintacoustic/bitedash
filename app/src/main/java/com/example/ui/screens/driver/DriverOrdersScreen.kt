@@ -47,13 +47,12 @@ import com.example.ui.viewmodel.driver.DriverDeliveryViewModel
  * Driver orders screen for BiteDash.
  * 
  * Displays available and assigned deliveries for drivers.
- * Allows drivers to accept deliveries.
+ * Allows drivers to accept, pick up, and complete deliveries.
  * 
  * Does NOT:
  * - Implement GPS tracking
  * - Send notifications
- * - Complete deliveries
- * - Assign drivers automatically
+ * - Implement maps
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -84,6 +83,8 @@ fun DriverOrdersScreen(
         uiState = uiState,
         onRefresh = viewModel::refreshOrders,
         onAcceptDelivery = viewModel::acceptDelivery,
+        onPickupOrder = viewModel::pickupOrder,
+        onCompleteDelivery = viewModel::completeDelivery,
         onSelectOrder = viewModel::selectOrder,
         snackbarHostState = snackbarHostState,
         modifier = modifier
@@ -99,6 +100,8 @@ fun DriverOrdersContent(
     uiState: DriverDeliveryUiState,
     onRefresh: () -> Unit,
     onAcceptDelivery: (String) -> Unit,
+    onPickupOrder: (String) -> Unit,
+    onCompleteDelivery: (String) -> Unit,
     onSelectOrder: (DriverDeliveryOrder) -> Unit,
     snackbarHostState: SnackbarHostState,
     modifier: Modifier = Modifier
@@ -152,10 +155,15 @@ fun DriverOrdersContent(
                     0 -> AvailableDeliveriesList(
                         orders = uiState.availableOrders,
                         onAcceptDelivery = onAcceptDelivery,
+                        onPickupOrder = onPickupOrder,
+                        onCompleteDelivery = onCompleteDelivery,
                         actionInProgress = uiState.actionInProgress
                     )
                     1 -> MyDeliveriesList(
                         orders = uiState.myDeliveries,
+                        onAcceptDelivery = onAcceptDelivery,
+                        onPickupOrder = onPickupOrder,
+                        onCompleteDelivery = onCompleteDelivery,
                         onSelectOrder = onSelectOrder
                     )
                 }
@@ -171,6 +179,8 @@ fun DriverOrdersContent(
 private fun AvailableDeliveriesList(
     orders: List<DriverDeliveryOrder>,
     onAcceptDelivery: (String) -> Unit,
+    onPickupOrder: (String) -> Unit,
+    onCompleteDelivery: (String) -> Unit,
     actionInProgress: String?
 ) {
     when {
@@ -199,6 +209,8 @@ private fun AvailableDeliveriesList(
                     DriverOrderCard(
                         order = order,
                         onAcceptDelivery = { onAcceptDelivery(order.orderId) },
+                        onPickupOrder = { onPickupOrder(order.orderId) },
+                        onCompleteDelivery = { onCompleteDelivery(order.orderId) },
                         isLoading = actionInProgress == order.orderId
                     )
                 }
@@ -217,6 +229,9 @@ private fun AvailableDeliveriesList(
 @Composable
 private fun MyDeliveriesList(
     orders: List<DriverDeliveryOrder>,
+    onAcceptDelivery: (String) -> Unit,
+    onPickupOrder: (String) -> Unit,
+    onCompleteDelivery: (String) -> Unit,
     onSelectOrder: (DriverDeliveryOrder) -> Unit
 ) {
     when {
@@ -244,7 +259,9 @@ private fun MyDeliveriesList(
                 ) { order ->
                     DriverOrderCard(
                         order = order,
-                        onAcceptDelivery = { onSelectOrder(order) }
+                        onAcceptDelivery = { onAcceptDelivery(order.orderId) },
+                        onPickupOrder = { onPickupOrder(order.orderId) },
+                        onCompleteDelivery = { onCompleteDelivery(order.orderId) }
                     )
                 }
                 
@@ -367,6 +384,8 @@ fun DriverOrdersScreenPreview() {
         uiState = previewState,
         onRefresh = {},
         onAcceptDelivery = {},
+        onPickupOrder = {},
+        onCompleteDelivery = {},
         onSelectOrder = {},
         snackbarHostState = SnackbarHostState()
     )
@@ -386,6 +405,8 @@ fun DriverOrdersScreenEmptyPreview() {
         ),
         onRefresh = {},
         onAcceptDelivery = {},
+        onPickupOrder = {},
+        onCompleteDelivery = {},
         onSelectOrder = {},
         snackbarHostState = SnackbarHostState()
     )
@@ -405,6 +426,8 @@ fun DriverOrdersScreenLoadingPreview() {
         ),
         onRefresh = {},
         onAcceptDelivery = {},
+        onPickupOrder = {},
+        onCompleteDelivery = {},
         onSelectOrder = {},
         snackbarHostState = SnackbarHostState()
     )

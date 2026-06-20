@@ -447,6 +447,24 @@ class FirestoreService {
                     mapOf(
                         "driverId" to driverId,
                         "driverName" to driverName,
+                        "deliveryStatus" to "ASSIGNED",
+                        "updatedAt" to Timestamp.now()
+                    )
+                )
+                .await()
+            true
+        } catch (e: Exception) {
+            false
+        }
+    }
+
+    suspend fun updateDeliveryStatus(orderId: String, deliveryStatus: String): Boolean {
+        return try {
+            db.collection(COLLECTION_ORDERS)
+                .document(orderId)
+                .update(
+                    mapOf(
+                        "deliveryStatus" to deliveryStatus,
                         "updatedAt" to Timestamp.now()
                     )
                 )

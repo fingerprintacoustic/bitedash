@@ -37,12 +37,14 @@ import java.util.Locale
 /**
  * Driver order card component.
  * 
- * Displays delivery order information with accept action.
+ * Displays delivery order information with status-based actions.
  */
 @Composable
 fun DriverOrderCard(
     order: DriverDeliveryOrder,
     onAcceptDelivery: () -> Unit,
+    onPickupOrder: () -> Unit,
+    onCompleteDelivery: () -> Unit,
     modifier: Modifier = Modifier,
     isLoading: Boolean = false
 ) {
@@ -82,12 +84,30 @@ fun DriverOrderCard(
             
             Spacer(modifier = Modifier.height(16.dp))
             
-            // Action button for accepting delivery
-            AcceptDeliveryButton(
-                isLoading = isLoading,
-                isAssigned = order.deliveryStatus != DriverDeliveryStatus.UNASSIGNED,
-                onAccept = onAcceptDelivery
-            )
+            // Action buttons based on delivery status
+            when (order.deliveryStatus) {
+                DriverDeliveryStatus.UNASSIGNED -> {
+                    AcceptDeliveryButton(
+                        isLoading = isLoading,
+                        onAccept = onAcceptDelivery
+                    )
+                }
+                DriverDeliveryStatus.ASSIGNED -> {
+                    PickupButton(
+                        isLoading = isLoading,
+                        onPickup = onPickupOrder
+                    )
+                }
+                DriverDeliveryStatus.PICKED_UP -> {
+                    CompleteDeliveryButton(
+                        isLoading = isLoading,
+                        onComplete = onCompleteDelivery
+                    )
+                }
+                DriverDeliveryStatus.DELIVERED -> {
+                    DeliveredBadge()
+                }
+            }
         }
     }
 }
@@ -360,7 +380,6 @@ private fun OrderSummary(order: DriverDeliveryOrder) {
 @Composable
 private fun AcceptDeliveryButton(
     isLoading: Boolean,
-    isAssigned: Boolean,
     onAccept: () -> Unit
 ) {
     if (isLoading) {
@@ -373,30 +392,121 @@ private fun AcceptDeliveryButton(
                 strokeWidth = 2.dp
             )
         }
-    } else if (isAssigned) {
-        Card(
-            colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.primaryContainer
-            ),
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Text(
-                text = "Delivery Accepted",
-                style = MaterialTheme.typography.labelLarge,
-                fontWeight = FontWeight.SemiBold,
-                color = MaterialTheme.colorScheme.onPrimaryContainer,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = 12.dp),
-                textAlign = androidx.compose.ui.text.style.TextAlign.Center
-            )
-        }
     } else {
         Button(
             onClick = onAccept,
             modifier = Modifier.fillMaxWidth()
         ) {
             Text("Accept Delivery")
+        }
+    }
+}
+
+/**
+ * Pickup button for assigned orders.
+ */
+@Composable
+private fun PickupButton(
+    isLoading: Boolean,
+    onPickup: () -> Unit
+) {
+    if (isLoading) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.Center
+        ) {
+            CircularProgressIndicator(
+                modifier = Modifier.size(24.dp),
+                strokeWidth = 2.dp
+            )
+        }
+    } else {
+        Button(
+            onClick = onPickup,
+            modifier = Modifier.fillMaxWidth(),
+            colors = androidx.compose.material3.ButtonDefaults.buttonColors(
+                containerColor = MaterialTheme.colorScheme.tertiary
+            )
+        ) {
+            Icon(
+                imageVector = Icons.Default.Restaurant,
+                contentDescription = null,
+                modifier = Modifier.size(18.dp)
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            Text("Pick Up Order")
+        }
+    }
+}
+
+/**
+ * Complete delivery button for picked up orders.
+ */
+@Composable
+private fun CompleteDeliveryButton(
+    isLoading: Boolean,
+    onComplete: () -> Unit
+) {
+    if (isLoading) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.Center
+        ) {
+            CircularProgressIndicator(
+                modifier = Modifier.size(24.dp),
+                strokeWidth = 2.dp
+            )
+        }
+    } else {
+        Button(
+            onClick = onComplete,
+            modifier = Modifier.fillMaxWidth(),
+            colors = androidx.compose.material3.ButtonDefaults.buttonColors(
+                containerColor = MaterialTheme.colorScheme.primary
+            )
+        ) {
+            Icon(
+                imageVector = Icons.Default.LocationOn,
+                contentDescription = null,
+                modifier = Modifier.size(18.dp)
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            Text("Mark Delivered")
+        }
+    }
+}
+
+/**
+ * Delivered badge for completed orders.
+ */
+@Composable
+private fun DeliveredBadge() {
+    Card(
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.primaryContainer
+        ),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 12.dp),
+            horizontalArrangement = Arrangement.Center,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                imageVector = Icons.Default.LocationOn,
+                contentDescription = null,
+                modifier = Modifier.size(20.dp),
+                tint = MaterialTheme.colorScheme.onPrimaryContainer
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            Text(
+                text = "Delivered",
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onPrimaryContainer
+            )
         }
     }
 }
@@ -445,7 +555,9 @@ fun DriverOrderCardPreview() {
     
     DriverOrderCard(
         order = previewOrder,
-        onAcceptDelivery = {}
+        onAcceptDelivery = {},
+        onPickupOrder = {},
+        onCompleteDelivery = {}
     )
 }
 
@@ -480,6 +592,45 @@ fun DriverOrderCardAssignedPreview() {
     
     DriverOrderCard(
         order = previewOrder,
-        onAcceptDelivery = {}
+        onAcceptDelivery = {},
+        onPickupOrder = {},
+        onCompleteDelivery = {}
+    )
+}
+
+/**
+ * Preview for DriverOrderCard - Picked Up.
+ */
+@Composable
+fun DriverOrderCardPickedUpPreview() {
+    val previewOrder = DriverDeliveryOrder(
+        orderId = "ORD_123456789",
+        restaurantName = "Tasty Foods Restaurant",
+        restaurantAddress = "45 Main Street, Harare",
+        customerName = "John Doe",
+        customerAddress = "123 Shopping Centre, Harare",
+        customerPhone = "0771234567",
+        items = listOf(
+            DriverOrderItem(
+                itemId = "1",
+                itemName = "Chicken Burger",
+                quantity = 1,
+                price = 8.99
+            )
+        ),
+        subtotal = 8.99,
+        deliveryFee = 5.00,
+        totalCost = 13.99,
+        orderStatus = "READY_FOR_PICKUP",
+        deliveryStatus = DriverDeliveryStatus.PICKED_UP,
+        driverId = "DRIVER_001",
+        driverName = "Mike Driver"
+    )
+    
+    DriverOrderCard(
+        order = previewOrder,
+        onAcceptDelivery = {},
+        onPickupOrder = {},
+        onCompleteDelivery = {}
     )
 }
