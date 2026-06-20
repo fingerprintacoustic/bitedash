@@ -45,13 +45,16 @@ import java.util.Locale
 /**
  * Restaurant order card component.
  * 
- * Displays order information with accept/reject actions for PAID orders.
+ * Displays order information with status-based actions.
  */
 @Composable
 fun RestaurantOrderCard(
     order: RestaurantOrder,
     onAccept: () -> Unit,
     onReject: () -> Unit,
+    onStartPreparing: () -> Unit,
+    onMarkReady: () -> Unit,
+    onCancel: () -> Unit = {},
     modifier: Modifier = Modifier,
     isLoading: Boolean = false
 ) {
@@ -95,16 +98,33 @@ fun RestaurantOrderCard(
             
             Spacer(modifier = Modifier.height(16.dp))
             
-            // Action buttons for PAID status
-            if (order.status == RestaurantOrderStatus.PAID) {
-                ActionButtons(
-                    isLoading = isLoading,
-                    onAccept = onAccept,
-                    onReject = onReject
-                )
-            } else {
-                // Status badge for non-PAID orders
-                StatusBadge(status = order.status)
+            // Action buttons based on order status
+            when (order.status) {
+                RestaurantOrderStatus.PAID -> {
+                    ActionButtons(
+                        isLoading = isLoading,
+                        onAccept = onAccept,
+                        onReject = onReject
+                    )
+                }
+                RestaurantOrderStatus.ACCEPTED -> {
+                    PreparingActionButtons(
+                        isLoading = isLoading,
+                        onStartPreparing = onStartPreparing,
+                        onReject = onReject
+                    )
+                }
+                RestaurantOrderStatus.PREPARING -> {
+                    ReadyActionButtons(
+                        isLoading = isLoading,
+                        onMarkReady = onMarkReady,
+                        onCancel = onCancel
+                    )
+                }
+                else -> {
+                    // Status badge for other statuses
+                    StatusBadge(status = order.status)
+                }
             }
         }
     }
@@ -402,6 +422,112 @@ private fun ActionButtons(
 }
 
 /**
+ * Action buttons for orders being prepared.
+ */
+@Composable
+private fun PreparingActionButtons(
+    isLoading: Boolean,
+    onStartPreparing: () -> Unit,
+    onReject: () -> Unit
+) {
+    if (isLoading) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.Center
+        ) {
+            CircularProgressIndicator(
+                modifier = Modifier.size(24.dp),
+                strokeWidth = 2.dp
+            )
+        }
+    } else {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            OutlinedButton(
+                onClick = onReject,
+                modifier = Modifier.weight(1f),
+                colors = ButtonDefaults.outlinedButtonColors(
+                    contentColor = MaterialTheme.colorScheme.error
+                )
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Cancel,
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp)
+                )
+                Spacer(modifier = Modifier.width(4.dp))
+                Text("Cancel")
+            }
+            
+            Button(
+                onClick = onStartPreparing,
+                modifier = Modifier.weight(1f)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Restaurant,
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp)
+                )
+                Spacer(modifier = Modifier.width(4.dp))
+                Text("Start Preparing")
+            }
+        }
+    }
+}
+
+/**
+ * Action buttons for orders ready for pickup.
+ */
+@Composable
+private fun ReadyActionButtons(
+    isLoading: Boolean,
+    onMarkReady: () -> Unit,
+    onCancel: () -> Unit
+) {
+    if (isLoading) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.Center
+        ) {
+            CircularProgressIndicator(
+                modifier = Modifier.size(24.dp),
+                strokeWidth = 2.dp
+            )
+        }
+    } else {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            OutlinedButton(
+                onClick = onCancel,
+                modifier = Modifier.weight(1f)
+            ) {
+                Text("Back")
+            }
+            
+            Button(
+                onClick = onMarkReady,
+                modifier = Modifier.weight(1f),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.tertiary
+                )
+            ) {
+                Icon(
+                    imageVector = Icons.Default.CheckCircle,
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp)
+                )
+                Spacer(modifier = Modifier.width(4.dp))
+                Text("Ready for Pickup")
+            }
+        }
+    }
+}
+
+/**
  * Status badge for non-PAID orders.
  */
 @Composable
@@ -478,7 +604,9 @@ fun RestaurantOrderCardPreview() {
     RestaurantOrderCard(
         order = previewOrder,
         onAccept = {},
-        onReject = {}
+        onReject = {},
+        onStartPreparing = {},
+        onMarkReady = {}
     )
 }
 
@@ -511,6 +639,43 @@ fun RestaurantOrderCardAcceptedPreview() {
     RestaurantOrderCard(
         order = previewOrder,
         onAccept = {},
-        onReject = {}
+        onReject = {},
+        onStartPreparing = {},
+        onMarkReady = {}
+    )
+}
+
+/**
+ * Preview for RestaurantOrderCard - Preparing.
+ */
+@Composable
+fun RestaurantOrderCardPreparingPreview() {
+    val previewOrder = RestaurantOrder(
+        orderId = "ORD_123456789",
+        customerName = "John Doe",
+        customerAddress = "123 Main Street, Harare",
+        customerPhone = "0771234567",
+        items = listOf(
+            RestaurantOrderItem(
+                itemId = "1",
+                itemName = "Chicken Burger",
+                quantity = 1,
+                price = 8.99
+            )
+        ),
+        subtotal = 8.99,
+        deliveryFee = 3.00,
+        totalCost = 11.99,
+        status = RestaurantOrderStatus.PREPARING,
+        paymentMethod = "ECOCASH",
+        paymentRef = "PAY123456"
+    )
+    
+    RestaurantOrderCard(
+        order = previewOrder,
+        onAccept = {},
+        onReject = {},
+        onStartPreparing = {},
+        onMarkReady = {}
     )
 }

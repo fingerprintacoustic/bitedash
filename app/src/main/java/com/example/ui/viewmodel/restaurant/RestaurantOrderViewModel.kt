@@ -171,6 +171,93 @@ class RestaurantOrderViewModel(
     }
     
     /**
+     * Start preparing an accepted order.
+     * Updates order status to PREPARING.
+     */
+    fun startPreparing(orderId: String) {
+        viewModelScope.launch {
+            _uiState.update { it.copy(actionInProgress = orderId) }
+            
+            try {
+                val success = firestoreService.updateOrderStatus(
+                    orderId = orderId,
+                    status = RestaurantOrderStatus.PREPARING.value
+                )
+                
+                if (success) {
+                    _uiState.update { state ->
+                        state.copy(
+                            orders = state.orders.map { order ->
+                                if (order.orderId == orderId) {
+                                    order.copy(status = RestaurantOrderStatus.PREPARING)
+                                } else {
+                                    order
+                                }
+                            },
+                            actionInProgress = null
+                        )
+                    }
+                } else {
+                    _uiState.update {
+                        it.copy(
+                            actionInProgress = null,
+                            errorMessage = "Failed to start preparing order"
+                        )
+                    }
+                }
+            } catch (e: Exception) {
+                _uiState.update {
+                    it.copy(
+                        actionInProgress = null,
+                        errorMessage = "Failed to start preparing: ${e.message}"
+                    )
+                }
+            }
+        }
+    }
+    
+    /**
+     * Mark an order as ready for pickup.
+     * Updates order status to READY_FOR_PICKUP.
+     */
+    fun markReadyForPickup(orderId: String) {
+        viewModelScope.launch {
+            _uiState.update { it.copy(actionInProgress = orderId) }
+            
+            try {
+                val success = firestoreService.updateOrderStatus(
+                    orderId = orderId,
+                    status = RestaurantOrderStatus.READY_FOR_PICKUP.value
+                )
+                
+                if (success) {
+                    // Remove from restaurant's view since it's now ready
+                    _uiState.update { state ->
+                        state.copy(
+                            orders = state.orders.filter { it.orderId != orderId },
+                            actionInProgress = null
+                        )
+                    }
+                } else {
+                    _uiState.update {
+                        it.copy(
+                            actionInProgress = null,
+                            errorMessage = "Failed to mark order ready"
+                        )
+                    }
+                }
+            } catch (e: Exception) {
+                _uiState.update {
+                    it.copy(
+                        actionInProgress = null,
+                        errorMessage = "Failed to mark ready: ${e.message}"
+                    )
+                }
+            }
+        }
+    }
+    
+    /**
      * Select an order for detail view.
      */
     fun selectOrder(order: RestaurantOrder) {

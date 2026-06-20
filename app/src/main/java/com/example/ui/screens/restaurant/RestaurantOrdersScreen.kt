@@ -39,7 +39,9 @@ import com.example.ui.viewmodel.restaurant.RestaurantOrderViewModel
  * Restaurant orders screen for BiteDash.
  * 
  * Displays PAID orders that need restaurant action.
- * Allows restaurants to accept or reject orders.
+ * Allows restaurants to accept, reject, or progress orders.
+ * 
+ * Order flow: PAID → ACCEPTED → PREPARING → READY_FOR_PICKUP
  * 
  * Does NOT:
  * - Assign drivers
@@ -59,6 +61,8 @@ fun RestaurantOrdersScreen(
         onRefresh = viewModel::refreshOrders,
         onAccept = viewModel::acceptOrder,
         onReject = viewModel::rejectOrder,
+        onStartPreparing = viewModel::startPreparing,
+        onMarkReadyForPickup = viewModel::markReadyForPickup,
         onSelectOrder = viewModel::selectOrder,
         modifier = modifier
     )
@@ -74,6 +78,8 @@ fun RestaurantOrdersContent(
     onRefresh: () -> Unit,
     onAccept: (String) -> Unit,
     onReject: (String) -> Unit,
+    onStartPreparing: (String) -> Unit,
+    onMarkReadyForPickup: (String) -> Unit,
     onSelectOrder: (com.example.ui.viewmodel.restaurant.RestaurantOrder) -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -118,6 +124,8 @@ fun RestaurantOrdersContent(
                         orders = uiState.orders,
                         onAccept = onAccept,
                         onReject = onReject,
+                        onStartPreparing = onStartPreparing,
+                        onMarkReadyForPickup = onMarkReadyForPickup,
                         actionInProgress = uiState.actionInProgress
                     )
                 }
@@ -223,6 +231,8 @@ private fun OrdersList(
     orders: List<com.example.ui.viewmodel.restaurant.RestaurantOrder>,
     onAccept: (String) -> Unit,
     onReject: (String) -> Unit,
+    onStartPreparing: (String) -> Unit,
+    onMarkReadyForPickup: (String) -> Unit,
     actionInProgress: String?
 ) {
     LazyColumn(
@@ -247,6 +257,8 @@ private fun OrdersList(
                 order = order,
                 onAccept = { onAccept(order.orderId) },
                 onReject = { onReject(order.orderId) },
+                onStartPreparing = { onStartPreparing(order.orderId) },
+                onMarkReady = { onMarkReadyForPickup(order.orderId) },
                 isLoading = actionInProgress == order.orderId
             )
         }
@@ -294,6 +306,8 @@ fun RestaurantOrdersScreenPreview() {
         onRefresh = {},
         onAccept = {},
         onReject = {},
+        onStartPreparing = {},
+        onMarkReadyForPickup = {},
         onSelectOrder = {}
     )
 }
@@ -312,6 +326,8 @@ fun RestaurantOrdersScreenEmptyPreview() {
         onRefresh = {},
         onAccept = {},
         onReject = {},
+        onStartPreparing = {},
+        onMarkReadyForPickup = {},
         onSelectOrder = {}
     )
 }
@@ -330,6 +346,8 @@ fun RestaurantOrdersScreenLoadingPreview() {
         onRefresh = {},
         onAccept = {},
         onReject = {},
+        onStartPreparing = {},
+        onMarkReadyForPickup = {},
         onSelectOrder = {}
     )
 }
