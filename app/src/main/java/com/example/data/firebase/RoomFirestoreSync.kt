@@ -413,7 +413,7 @@ class RoomFirestoreSync(
             restaurantName = restaurantName,
             itemsSummary = itemsSummary,
             totalCost = totalCost,
-            deliveryFee = deliveryFee,
+            deliveryFee = 2.00, // Default delivery fee for orders created from Room
             driverTip = driverTip,
             status = status,
             driverId = driverId?.toString(),
