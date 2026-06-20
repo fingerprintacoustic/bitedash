@@ -34,8 +34,12 @@ import com.example.ui.viewmodel.payment.PaymentValidation
  * Checkout screen for payment processing.
  * 
  * This screen displays payment method selection and status.
+ * Uses Paynow sandbox for payment processing.
  * 
  * @param viewModel CheckoutViewModel instance
+ * @param orderId The order ID for this checkout
+ * @param userId The user ID making the payment
+ * @param amount The payment amount
  * @param onNavigateBack Callback to navigate back
  * @param onPaymentComplete Callback when payment is completed successfully
  */
@@ -43,6 +47,9 @@ import com.example.ui.viewmodel.payment.PaymentValidation
 @Composable
 fun CheckoutScreen(
     viewModel: CheckoutViewModel,
+    orderId: String,
+    userId: String,
+    amount: Double,
     onNavigateBack: () -> Unit,
     onPaymentComplete: (String) -> Unit = {}
 ) {
@@ -57,10 +64,13 @@ fun CheckoutScreen(
     ) { paddingValues ->
         CheckoutContent(
             uiState = uiState,
+            orderId = orderId,
+            userId = userId,
+            amount = amount,
             paymentMethods = PaymentMethod.entries,
             onMethodSelected = viewModel::selectPaymentMethod,
-            onInitiatePayment = { amount, userId, orderId, phoneNumber, description ->
-                viewModel.initiatePayment(amount, userId, orderId, phoneNumber, description)
+            onInitiatePayment = { amt, uid, oid, phone, desc ->
+                viewModel.initiatePayment(amt, uid, oid, phone, desc)
             },
             onCancelPayment = viewModel::cancelPayment,
             onResetPayment = viewModel::resetPayment,
@@ -77,6 +87,9 @@ fun CheckoutScreen(
 @Composable
 fun CheckoutContent(
     uiState: PaymentUiState,
+    orderId: String,
+    userId: String,
+    amount: Double,
     paymentMethods: List<PaymentMethod>,
     onMethodSelected: (PaymentMethod) -> Unit,
     onInitiatePayment: (Double, String, String, String, String) -> Unit,
@@ -84,6 +97,7 @@ fun CheckoutContent(
     onResetPayment: () -> Unit,
     onNavigateBack: () -> Unit,
     onPaymentComplete: (String) -> Unit,
+    phoneNumber: String = "",
     modifier: Modifier = Modifier
 ) {
     Column(
@@ -122,14 +136,38 @@ fun CheckoutContent(
                 }
             }
             
-            // Placeholder for payment button
-            // TODO: Add actual payment button that calls onInitiatePayment
-            // PlaceholderButton(
-            //     text = "Pay Now",
-            //     onClick = { /* Handle payment */ }
-            // )
+            // Pay Now button
+            // Connects to CheckoutViewModel.initiatePayment()
+            Button(
+                onClick = {
+                    onInitiatePayment(
+                        amount = amount,
+                        userId = userId,
+                        orderId = orderId,
+                        phoneNumber = phoneNumber,
+                        description = "BiteDash Order $orderId"
+                    )
+                },
+                modifier = Modifier.fillMaxWidth(),
+                enabled = uiState.validation is PaymentValidation.Valid
+            ) {
+                Text(
+                    text = "Pay Now",
+                    fontWeight = FontWeight.SemiBold
+                )
+            }
             
             Spacer(modifier = Modifier.height(8.dp))
+        }
+        
+        // Loading indicator for Creating Transaction state
+        if (uiState.paymentState is PaymentState.CreatingTransaction) {
+            Text(
+                text = "Creating your payment transaction...",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.align(Alignment.CenterHorizontally)
+            )
         }
         
         // Cancel button (shown during payment process)
@@ -169,37 +207,7 @@ fun CheckoutContent(
 }
 
 /**
- * Placeholder button composable for future payment button.
- * 
- * This is a placeholder for the actual payment button that will be
- * implemented in future versions. Currently disabled.
- * 
- * TODO: Enable this button once order flow integration is ready.
- */
-@Composable
-fun PlaceholderPaymentButton(
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-    enabled: Boolean = false
-) {
-    Button(
-        onClick = onClick,
-        modifier = modifier.fillMaxWidth(),
-        enabled = enabled,
-        colors = ButtonDefaults.buttonColors(
-            disabledContainerColor = MaterialTheme.colorScheme.surfaceVariant,
-            disabledContentColor = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-    ) {
-        Text(
-            text = if (enabled) "Pay Now" else "Payment Button (Coming Soon)",
-            fontWeight = FontWeight.SemiBold
-        )
-    }
-}
-
-/**
- * Preview for CheckoutScreen.
+ * Preview for CheckoutScreen - Idle.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -213,6 +221,39 @@ fun CheckoutScreenIdlePreview() {
                 selectedMethod = PaymentMethod.ECOCASH,
                 validation = PaymentValidation.Valid
             ),
+            orderId = "ORDER_123",
+            userId = "USER_456",
+            amount = 25.99,
+            paymentMethods = PaymentMethod.entries,
+            onMethodSelected = {},
+            onInitiatePayment = { _, _, _, _, _ -> },
+            onCancelPayment = {},
+            onResetPayment = {},
+            onNavigateBack = {},
+            onPaymentComplete = {},
+            modifier = Modifier.padding(paddingValues)
+        )
+    }
+}
+
+/**
+ * Preview for CheckoutScreen - Creating Transaction.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun CheckoutScreenCreatingPreview() {
+    Scaffold(
+        topBar = { TopAppBar(title = { Text("Checkout") }) }
+    ) { paddingValues ->
+        CheckoutContent(
+            uiState = PaymentUiState(
+                paymentState = PaymentState.CreatingTransaction,
+                selectedMethod = PaymentMethod.ECOCASH,
+                currentTransactionId = "TXN_123456"
+            ),
+            orderId = "ORDER_123",
+            userId = "USER_456",
+            amount = 25.99,
             paymentMethods = PaymentMethod.entries,
             onMethodSelected = {},
             onInitiatePayment = { _, _, _, _, _ -> },
@@ -241,6 +282,104 @@ fun CheckoutScreenWaitingPreview() {
                 currentTransactionId = "TXN_123456",
                 pollUrl = "https://paynow.co.zw/status/123"
             ),
+            orderId = "ORDER_123",
+            userId = "USER_456",
+            amount = 25.99,
+            paymentMethods = PaymentMethod.entries,
+            onMethodSelected = {},
+            onInitiatePayment = { _, _, _, _, _ -> },
+            onCancelPayment = {},
+            onResetPayment = {},
+            onNavigateBack = {},
+            onPaymentComplete = {},
+            modifier = Modifier.padding(paddingValues)
+        )
+    }
+}
+
+/**
+ * Preview for CheckoutScreen - Paid.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun CheckoutScreenPaidPreview() {
+    Scaffold(
+        topBar = { TopAppBar(title = { Text("Checkout") }) }
+    ) { paddingValues ->
+        CheckoutContent(
+            uiState = PaymentUiState(
+                paymentState = PaymentState.Paid(
+                    transactionId = "TXN_123456",
+                    amount = 25.99,
+                    method = PaymentMethod.ECOCASH
+                ),
+                selectedMethod = PaymentMethod.ECOCASH,
+                currentTransactionId = "TXN_123456"
+            ),
+            orderId = "ORDER_123",
+            userId = "USER_456",
+            amount = 25.99,
+            paymentMethods = PaymentMethod.entries,
+            onMethodSelected = {},
+            onInitiatePayment = { _, _, _, _, _ -> },
+            onCancelPayment = {},
+            onResetPayment = {},
+            onNavigateBack = {},
+            onPaymentComplete = {},
+            modifier = Modifier.padding(paddingValues)
+        )
+    }
+}
+
+/**
+ * Preview for CheckoutScreen - Failed.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun CheckoutScreenFailedPreview() {
+    Scaffold(
+        topBar = { TopAppBar(title = { Text("Checkout") }) }
+    ) { paddingValues ->
+        CheckoutContent(
+            uiState = PaymentUiState(
+                paymentState = PaymentState.Failed(
+                    errorCode = "E001",
+                    errorMessage = "Payment was declined"
+                ),
+                selectedMethod = PaymentMethod.ECOCASH
+            ),
+            orderId = "ORDER_123",
+            userId = "USER_456",
+            amount = 25.99,
+            paymentMethods = PaymentMethod.entries,
+            onMethodSelected = {},
+            onInitiatePayment = { _, _, _, _, _ -> },
+            onCancelPayment = {},
+            onResetPayment = {},
+            onNavigateBack = {},
+            onPaymentComplete = {},
+            modifier = Modifier.padding(paddingValues)
+        )
+    }
+}
+
+/**
+ * Preview for CheckoutScreen - Cancelled.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun CheckoutScreenCancelledPreview() {
+    Scaffold(
+        topBar = { TopAppBar(title = { Text("Checkout") }) }
+    ) { paddingValues ->
+        CheckoutContent(
+            uiState = PaymentUiState(
+                paymentState = PaymentState.Cancelled,
+                selectedMethod = PaymentMethod.ECOCASH
+            ),
+            orderId = "ORDER_123",
+            userId = "USER_456",
+            amount = 25.99,
             paymentMethods = PaymentMethod.entries,
             onMethodSelected = {},
             onInitiatePayment = { _, _, _, _, _ -> },
