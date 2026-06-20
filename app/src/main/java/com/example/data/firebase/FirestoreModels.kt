@@ -23,11 +23,16 @@ import com.google.firebase.firestore.ServerTimestamp
 data class FirestoreUser(
     @DocumentId
     val id: String = "",
+    val uid: String = "", // Firebase Auth UID
     val email: String = "",
     val displayName: String = "",
     val phone: String = "",
     val address: String = "",
-    val role: String = "customer", // customer, restaurant_owner, driver, admin
+    val role: String = "customer", // customer, restaurant, driver, admin
+    // Restaurant specific
+    val restaurantName: String = "",
+    // Driver specific
+    val vehicleType: String = "", // Bicycle, Motorbike, Car
     // Payment info
     val ecoCashNumber: String = "",
     val oneMoneyNumber: String = "",

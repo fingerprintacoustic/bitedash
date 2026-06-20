@@ -12,12 +12,18 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.ui.theme.MyApplicationTheme
 import com.example.ui.screens.BiteDashMainApp
 import com.example.ui.screens.AuthenticationGate
+import com.example.ui.screens.SplashScreen
+import com.example.ui.screens.AuthLoadingScreen
 import com.example.ui.viewmodel.AuthViewModel
 import com.example.ui.viewmodel.BiteDashViewModel
 import com.example.ui.viewmodel.AuthState
 import com.example.ui.viewmodel.UserRole
 
 class MainActivity : ComponentActivity() {
+  
+  // Track if we've shown the splash screen
+  private var showSplash by mutableStateOf(true)
+  
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
     enableEdgeToEdge()
@@ -25,42 +31,45 @@ class MainActivity : ComponentActivity() {
       MyApplicationTheme {
         val authViewModel: AuthViewModel = viewModel()
         val authState by authViewModel.authState.collectAsState()
-
-        Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
-          when (authState) {
-            is AuthState.Authenticated -> {
-              val currentUser = authViewModel.currentFirestoreUser.value
-              val userRole = currentUser?.role?.let { UserRole.fromString(it) } ?: UserRole.CUSTOMER
-              
-              BiteDashMainApp(
-                viewModel = viewModel(),
-                authViewModel = authViewModel,
-                userRole = userRole
-              )
-            }
-            is AuthState.Loading -> {
-              // Loading state handled by AuthenticationGate
-              BiteDashMainApp(
-                viewModel = viewModel(),
-                authViewModel = authViewModel,
-                userRole = UserRole.CUSTOMER
-              )
-            }
-            else -> {
-              // Show authentication gate
-              AuthenticationGate(
-                authViewModel = authViewModel,
-                onAuthenticated = { vm ->
-                  val currentUser = vm.currentFirestoreUser.value
-                  val userRole = currentUser?.role?.let { UserRole.fromString(it) } ?: UserRole.CUSTOMER
-                  
-                  BiteDashMainApp(
-                    viewModel = viewModel(),
-                    authViewModel = authViewModel,
-                    userRole = userRole
-                  )
-                }
-              )
+        
+        // Show splash screen first, then navigate to main content
+        if (showSplash) {
+          SplashScreen(
+            onNavigateToMain = { showSplash = false }
+          )
+        } else {
+          Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
+            when (authState) {
+              is AuthState.Authenticated -> {
+                val currentUser = authViewModel.currentFirestoreUser.value
+                val userRole = currentUser?.role?.let { UserRole.fromString(it) } ?: UserRole.CUSTOMER
+                
+                BiteDashMainApp(
+                  viewModel = viewModel(),
+                  authViewModel = authViewModel,
+                  userRole = userRole
+                )
+              }
+              is AuthState.Loading, is AuthState.OtpSent, is AuthState.OtpVerifying -> {
+                // Loading state - show auth loading screen
+                AuthLoadingScreen(message = "Please wait...")
+              }
+              else -> {
+                // Show authentication gate
+                AuthenticationGate(
+                  authViewModel = authViewModel,
+                  onAuthenticated = { vm ->
+                    val currentUser = vm.currentFirestoreUser.value
+                    val userRole = currentUser?.role?.let { UserRole.fromString(it) } ?: UserRole.CUSTOMER
+                    
+                    BiteDashMainApp(
+                      viewModel = viewModel(),
+                      authViewModel = authViewModel,
+                      userRole = userRole
+                    )
+                  }
+                )
+              }
             }
           }
         }

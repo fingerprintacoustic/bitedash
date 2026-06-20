@@ -7,6 +7,9 @@ import com.example.data.firebase.AuthenticationService
 import com.example.data.firebase.AuthResult
 import com.example.data.firebase.FirestoreService
 import com.example.data.firebase.FirestoreUser
+import com.example.data.firebase.PhoneAuthCallback
+import com.google.firebase.auth.PhoneAuthCredential
+import com.google.firebase.auth.PhoneAuthProvider
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -20,15 +23,18 @@ sealed class AuthState {
     object Loading : AuthState()
     object Authenticated : AuthState()
     object Unauthenticated : AuthState()
+    object OtpSent : AuthState() // Phone OTP has been sent
+    object OtpVerifying : AuthState() // Verifying OTP
     data class Error(val message: String, val code: String) : AuthState()
 }
 
 /**
  * User role enumeration for role-based access control.
+ * Supported roles: customer, restaurant, driver, admin
  */
 enum class UserRole(val displayName: String, val value: String) {
     CUSTOMER("Customer", "customer"),
-    RESTAURANT_OWNER("Restaurant Owner", "restaurant_owner"),
+    RESTAURANT("Restaurant", "restaurant"),
     DRIVER("Delivery Driver", "driver"),
     ADMIN("Administrator", "admin");
 
@@ -40,8 +46,23 @@ enum class UserRole(val displayName: String, val value: String) {
 }
 
 /**
+ * Vehicle types for drivers.
+ */
+enum class VehicleType(val displayName: String, val value: String) {
+    BICYCLE("Bicycle", "Bicycle"),
+    MOTORBIKE("Motorbike", "Motorbike"),
+    CAR("Car", "Car");
+
+    companion object {
+        fun fromString(value: String): VehicleType {
+            return entries.find { it.value == value } ?: MOTORBIKE
+        }
+    }
+}
+
+/**
  * ViewModel for authentication functionality.
- * Manages sign-in, sign-up, password reset, and auth state.
+ * Manages sign-in, sign-up, password reset, phone OTP, and auth state.
  */
 class AuthViewModel(application: Application) : AndroidViewModel(application) {
 
@@ -79,6 +100,10 @@ class AuthViewModel(application: Application) : AndroidViewModel(application) {
     private val _address = MutableStateFlow("")
     val address: StateFlow<String> = _address.asStateFlow()
 
+    // Driver vehicle type
+    private val _vehicleType = MutableStateFlow(VehicleType.MOTORBIKE)
+    val vehicleType: StateFlow<VehicleType> = _vehicleType.asStateFlow()
+
     // Selected role during sign up
     private val _selectedRole = MutableStateFlow(UserRole.CUSTOMER)
     val selectedRole: StateFlow<UserRole> = _selectedRole.asStateFlow()
@@ -91,13 +116,18 @@ class AuthViewModel(application: Application) : AndroidViewModel(application) {
     private val _successMessage = MutableStateFlow<String?>(null)
     val successMessage: StateFlow<String?> = _successMessage.asStateFlow()
 
+    // Phone auth state
+    private var pendingVerificationId: String? = null
+    private var pendingResendToken: PhoneAuthProvider.ForceResendingToken? = null
+
     init {
-        // Check if user is already authenticated
+        // Check if user is already authenticated - session persistence
         checkAuthState()
     }
 
     /**
      * Check current authentication state.
+     * Called on app start to restore session.
      */
     fun checkAuthState() {
         val user = authService.getCurrentUser()
@@ -158,6 +188,13 @@ class AuthViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     /**
+     * Update vehicle type for drivers.
+     */
+    fun updateVehicleType(type: VehicleType) {
+        _vehicleType.value = type
+    }
+
+    /**
      * Update selected role.
      */
     fun updateSelectedRole(role: UserRole) {
@@ -205,7 +242,173 @@ class AuthViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     /**
-     * Sign up a new user.
+     * Send phone OTP for verification (+263 Zimbabwe support).
+     */
+    fun sendPhoneOtp(onSuccess: (() -> Unit)? = null) {
+        val phoneValue = _phone.value.trim()
+        
+        if (phoneValue.isEmpty()) {
+            _errorMessage.value = "Please enter your phone number"
+            return
+        }
+
+        // Basic validation for Zimbabwe phone numbers
+        val digitsOnly = phoneValue.filter { it.isDigit() }
+        if (digitsOnly.length < 9) {
+            _errorMessage.value = "Please enter a valid phone number"
+            return
+        }
+
+        _isLoading.value = true
+        _authState.value = AuthState.Loading
+
+        authService.signInWithPhone(phoneValue, object : PhoneAuthCallback {
+            override fun onVerificationCompleted(credential: PhoneAuthCredential) {
+                // Auto-retrieval succeeded, sign in directly
+                viewModelScope.launch {
+                    verifyOtpCredential(credential)
+                    onSuccess?.invoke()
+                }
+            }
+
+            override fun onVerificationFailed(error: AuthResult) {
+                _isLoading.value = false
+                _authState.value = AuthState.Unauthenticated
+                _errorMessage.value = getUserFriendlyErrorMessage(error.code)
+            }
+
+            override fun onCodeSent(verificationId: String, token: PhoneAuthProvider.ForceResendingToken) {
+                pendingVerificationId = verificationId
+                pendingResendToken = token
+                _isLoading.value = false
+                _authState.value = AuthState.OtpSent
+                onSuccess?.invoke()
+            }
+        })
+    }
+
+    /**
+     * Verify OTP code from phone authentication.
+     */
+    fun verifyOtp(code: String, onSuccess: ((String) -> Unit)? = null) {
+        val verificationId = pendingVerificationId
+        if (verificationId == null) {
+            _errorMessage.value = "Verification expired. Please request a new code."
+            return
+        }
+
+        if (code.length != 6) {
+            _errorMessage.value = "Please enter the 6-digit code"
+            return
+        }
+
+        viewModelScope.launch {
+            _isLoading.value = true
+            _authState.value = AuthState.OtpVerifying
+
+            when (val result = authService.verifyPhoneOtp(verificationId, code)) {
+                is AuthResult.Success -> {
+                    // Create or get Firestore user
+                    ensureFirestoreUserForPhone(result.userId)
+                    _authState.value = AuthState.Authenticated
+                    onSuccess?.invoke(result.userId)
+                }
+                is AuthResult.Error -> {
+                    _authState.value = AuthState.OtpSent
+                    _errorMessage.value = getUserFriendlyErrorMessage(result.code)
+                }
+            }
+
+            _isLoading.value = false
+        }
+    }
+
+    /**
+     * Verify OTP with credential (auto-retrieval).
+     */
+    private suspend fun verifyOtpCredential(credential: PhoneAuthCredential) {
+        _authState.value = AuthState.OtpVerifying
+        // Sign in with the credential
+        try {
+            val user = authService.getCurrentUser()
+            if (user != null) {
+                _authState.value = AuthState.Authenticated
+                loadFirestoreUserProfile(user.uid)
+            }
+        } catch (e: Exception) {
+            _authState.value = AuthState.Unauthenticated
+            _errorMessage.value = "Verification failed"
+        }
+    }
+
+    /**
+     * Ensure Firestore user document exists for phone auth users.
+     */
+    private fun ensureFirestoreUserForPhone(uid: String) {
+        viewModelScope.launch {
+            var user = firestoreService.getUser(uid)
+            if (user == null) {
+                // Create new user document for phone-only auth
+                val newUser = FirestoreUser(
+                    id = uid,
+                    uid = uid,
+                    phone = _phone.value.trim(),
+                    role = _selectedRole.value.value,
+                    displayName = _displayName.value.trim().ifEmpty { "User" }
+                )
+                firestoreService.createUser(newUser)
+                _currentFirestoreUser.value = newUser
+            } else {
+                _currentFirestoreUser.value = user
+            }
+        }
+    }
+
+    /**
+     * Resend OTP code.
+     */
+    fun resendOtp() {
+        val phoneValue = _phone.value.trim()
+        if (phoneValue.isEmpty()) {
+            _errorMessage.value = "Please enter your phone number"
+            return
+        }
+
+        _isLoading.value = true
+
+        authService.signInWithPhone(phoneValue, object : PhoneAuthCallback {
+            override fun onVerificationCompleted(credential: PhoneAuthCredential) {
+                viewModelScope.launch {
+                    verifyOtpCredential(credential)
+                }
+            }
+
+            override fun onVerificationFailed(error: AuthResult) {
+                _isLoading.value = false
+                _errorMessage.value = getUserFriendlyErrorMessage(error.code)
+            }
+
+            override fun onCodeSent(verificationId: String, token: PhoneAuthProvider.ForceResendingToken) {
+                pendingVerificationId = verificationId
+                pendingResendToken = token
+                _isLoading.value = false
+                _successMessage.value = "New verification code sent!"
+            }
+        })
+    }
+
+    /**
+     * Cancel phone auth and go back.
+     */
+    fun cancelPhoneAuth() {
+        pendingVerificationId = null
+        pendingResendToken = null
+        _authState.value = AuthState.Unauthenticated
+        clearFormFields()
+    }
+
+    /**
+     * Sign up a new user with email/password.
      */
     fun signUp(onSuccess: ((String) -> Unit)? = null) {
         if (!validateSignUpForm()) return
@@ -223,17 +426,19 @@ class AuthViewModel(application: Application) : AndroidViewModel(application) {
                     // Create Firestore user document
                     val firestoreUser = FirestoreUser(
                         id = result.userId,
+                        uid = result.userId,
                         email = _email.value.trim(),
                         displayName = _displayName.value.trim(),
                         phone = _phone.value.trim(),
                         address = _address.value.trim(),
-                        role = _selectedRole.value.value
+                        role = _selectedRole.value.value,
+                        restaurantName = if (_selectedRole.value == UserRole.RESTAURANT) _displayName.value.trim() else "",
+                        vehicleType = if (_selectedRole.value == UserRole.DRIVER) _vehicleType.value.value else ""
                     )
                     
                     val updateResult = firestoreService.updateUser(firestoreUser)
                     if (!updateResult) {
                         // User created in Firebase Auth but Firestore update failed
-                        // Log this but don't fail the sign-up
                     }
 
                     _authState.value = AuthState.Authenticated
@@ -301,6 +506,12 @@ class AuthViewModel(application: Application) : AndroidViewModel(application) {
                 currentUser?.email?.let { email ->
                     user = firestoreService.getUserByEmail(email)
                 }
+                // Also try phone number
+                if (user == null) {
+                    currentUser?.phoneNumber?.let { phone ->
+                        user = firestoreService.getUserByPhone(phone)
+                    }
+                }
             }
             
             _currentFirestoreUser.value = user
@@ -316,6 +527,8 @@ class AuthViewModel(application: Application) : AndroidViewModel(application) {
         address: String? = null,
         ecoCashNumber: String? = null,
         oneMoneyNumber: String? = null,
+        vehicleType: String? = null,
+        restaurantName: String? = null,
         onSuccess: (() -> Unit)? = null
     ) {
         val currentUser = _currentFirestoreUser.value ?: return
@@ -328,7 +541,9 @@ class AuthViewModel(application: Application) : AndroidViewModel(application) {
                 phone = phone ?: currentUser.phone,
                 address = address ?: currentUser.address,
                 ecoCashNumber = ecoCashNumber ?: currentUser.ecoCashNumber,
-                oneMoneyNumber = oneMoneyNumber ?: currentUser.oneMoneyNumber
+                oneMoneyNumber = oneMoneyNumber ?: currentUser.oneMoneyNumber,
+                vehicleType = vehicleType ?: currentUser.vehicleType,
+                restaurantName = restaurantName ?: currentUser.restaurantName
             )
 
             val success = firestoreService.updateUser(updatedUser)
@@ -374,7 +589,7 @@ class AuthViewModel(application: Application) : AndroidViewModel(application) {
      * Check if current user is a restaurant owner.
      */
     fun isRestaurantOwner(): Boolean {
-        return _currentFirestoreUser.value?.role == UserRole.RESTAURANT_OWNER.value
+        return _currentFirestoreUser.value?.role == UserRole.RESTAURANT.value
     }
 
     /**
@@ -492,8 +707,11 @@ class AuthViewModel(application: Application) : AndroidViewModel(application) {
         _phone.value = ""
         _address.value = ""
         _selectedRole.value = UserRole.CUSTOMER
+        _vehicleType.value = VehicleType.MOTORBIKE
         _errorMessage.value = null
         _successMessage.value = null
+        pendingVerificationId = null
+        pendingResendToken = null
     }
 
     private fun getUserFriendlyErrorMessage(code: String): String {
@@ -506,6 +724,8 @@ class AuthViewModel(application: Application) : AndroidViewModel(application) {
             AuthenticationService.ERROR_NETWORK -> "Network error. Please check your connection"
             AuthenticationService.ERROR_USER_DISABLED -> "This account has been disabled"
             AuthenticationService.ERROR_TOO_MANY_REQUESTS -> "Too many attempts. Please try again later"
+            AuthenticationService.ERROR_INVALID_PHONE -> "Invalid phone number. Use format: 0771234567"
+            AuthenticationService.ERROR_INVALID_OTP -> "Incorrect verification code"
             else -> "An error occurred. Please try again"
         }
     }

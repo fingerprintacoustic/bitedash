@@ -32,6 +32,7 @@ import com.example.ui.theme.*
 import com.example.ui.viewmodel.AuthState
 import com.example.ui.viewmodel.AuthViewModel
 import com.example.ui.viewmodel.UserRole
+import com.example.ui.viewmodel.VehicleType
 
 /**
  * Authentication wrapper that handles sign-in state and displays appropriate screens.
@@ -45,6 +46,7 @@ fun AuthenticationGate(
     val authState by authViewModel.authState.collectAsStateWithLifecycle()
     var showSignUp by remember { mutableStateOf(false) }
     var showForgotPassword by remember { mutableStateOf(false) }
+    var showPhoneLogin by remember { mutableStateOf(false) }
 
     when (authState) {
         is AuthState.Authenticated -> {
@@ -53,24 +55,52 @@ fun AuthenticationGate(
         is AuthState.Loading -> {
             LoadingScreen()
         }
+        is AuthState.OtpSent, is AuthState.OtpVerifying -> {
+            PhoneOtpScreen(
+                authViewModel = authViewModel,
+                onNavigateBack = { 
+                    authViewModel.cancelPhoneAuth()
+                    showPhoneLogin = false
+                }
+            )
+        }
         else -> {
-            if (showSignUp) {
-                SignUpScreen(
-                    authViewModel = authViewModel,
-                    onNavigateToSignIn = { showSignUp = false },
-                    onNavigateToForgotPassword = { showForgotPassword = true }
-                )
-            } else if (showForgotPassword) {
-                ForgotPasswordScreen(
-                    authViewModel = authViewModel,
-                    onNavigateBack = { showForgotPassword = false }
-                )
-            } else {
-                SignInScreen(
-                    authViewModel = authViewModel,
-                    onNavigateToSignUp = { showSignUp = true },
-                    onNavigateToForgotPassword = { showForgotPassword = true }
-                )
+            when {
+                showSignUp -> {
+                    SignUpScreen(
+                        authViewModel = authViewModel,
+                        onNavigateToSignIn = { showSignUp = false },
+                        onNavigateToForgotPassword = { showForgotPassword = true },
+                        onNavigateToPhoneLogin = { 
+                            showSignUp = false
+                            showPhoneLogin = true
+                        }
+                    )
+                }
+                showPhoneLogin -> {
+                    PhoneLoginScreen(
+                        authViewModel = authViewModel,
+                        onNavigateBack = { showPhoneLogin = false },
+                        onNavigateToSignUp = { 
+                            showPhoneLogin = false
+                            showSignUp = true
+                        }
+                    )
+                }
+                showForgotPassword -> {
+                    ForgotPasswordScreen(
+                        authViewModel = authViewModel,
+                        onNavigateBack = { showForgotPassword = false }
+                    )
+                }
+                else -> {
+                    SignInScreen(
+                        authViewModel = authViewModel,
+                        onNavigateToSignUp = { showSignUp = true },
+                        onNavigateToForgotPassword = { showForgotPassword = true },
+                        onNavigateToPhoneLogin = { showPhoneLogin = true }
+                    )
+                }
             }
         }
     }
@@ -106,7 +136,8 @@ private fun LoadingScreen() {
 fun SignInScreen(
     authViewModel: AuthViewModel,
     onNavigateToSignUp: () -> Unit,
-    onNavigateToForgotPassword: () -> Unit
+    onNavigateToForgotPassword: () -> Unit,
+    onNavigateToPhoneLogin: () -> Unit
 ) {
     val email by authViewModel.email.collectAsStateWithLifecycle()
     val password by authViewModel.password.collectAsStateWithLifecycle()
@@ -331,17 +362,23 @@ fun SignInScreen(
 
             Spacer(modifier = Modifier.height(24.dp))
 
-            // Continue as guest option
+            // Phone login option
             OutlinedButton(
-                onClick = { /* Continue as guest - handled externally */ },
+                onClick = onNavigateToPhoneLogin,
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(56.dp),
                 shape = RoundedCornerShape(12.dp),
                 border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
             ) {
+                Icon(
+                    imageVector = Icons.Outlined.Phone,
+                    contentDescription = null,
+                    modifier = Modifier.size(20.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
                 Text(
-                    text = "Continue as Guest",
+                    text = "Sign in with Phone (+263)",
                     fontSize = 16.sp,
                     color = MaterialTheme.colorScheme.onSurface
                 )
@@ -377,7 +414,8 @@ fun SignInScreen(
 fun SignUpScreen(
     authViewModel: AuthViewModel,
     onNavigateToSignIn: () -> Unit,
-    onNavigateToForgotPassword: () -> Unit
+    onNavigateToForgotPassword: () -> Unit,
+    onNavigateToPhoneLogin: () -> Unit
 ) {
     val email by authViewModel.email.collectAsStateWithLifecycle()
     val password by authViewModel.password.collectAsStateWithLifecycle()
@@ -386,6 +424,7 @@ fun SignUpScreen(
     val phone by authViewModel.phone.collectAsStateWithLifecycle()
     val address by authViewModel.address.collectAsStateWithLifecycle()
     val selectedRole by authViewModel.selectedRole.collectAsStateWithLifecycle()
+    val vehicleType by authViewModel.vehicleType.collectAsStateWithLifecycle()
     val isLoading by authViewModel.isLoading.collectAsStateWithLifecycle()
     val errorMessage by authViewModel.errorMessage.collectAsStateWithLifecycle()
     val successMessage by authViewModel.successMessage.collectAsStateWithLifecycle()
@@ -845,6 +884,547 @@ fun SignUpScreen(
             }
 
             Spacer(modifier = Modifier.height(32.dp))
+        }
+    }
+}
+
+/**
+ * Phone login screen for phone number authentication.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun PhoneLoginScreen(
+    authViewModel: AuthViewModel,
+    onNavigateBack: () -> Unit,
+    onNavigateToSignUp: () -> Unit
+) {
+    val phone by authViewModel.phone.collectAsStateWithLifecycle()
+    val displayName by authViewModel.displayName.collectAsStateWithLifecycle()
+    val selectedRole by authViewModel.selectedRole.collectAsStateWithLifecycle()
+    val isLoading by authViewModel.isLoading.collectAsStateWithLifecycle()
+    val errorMessage by authViewModel.errorMessage.collectAsStateWithLifecycle()
+
+    var showRoleSelector by remember { mutableStateOf(false) }
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .padding(24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Spacer(modifier = Modifier.height(24.dp))
+
+            // Back button
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                IconButton(onClick = onNavigateBack) {
+                    Icon(
+                        imageVector = Icons.Default.ArrowBack,
+                        contentDescription = "Back"
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Icon
+            Box(
+                modifier = Modifier
+                    .size(80.dp)
+                    .clip(RoundedCornerShape(20.dp))
+                    .background(MaterialTheme.colorScheme.primaryContainer),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Outlined.Phone,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(40.dp)
+                )
+            }
+
+            Spacer(modifier = Modifier.height(24.dp))
+
+            Text(
+                text = "Sign in with Phone",
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onBackground
+            )
+
+            Text(
+                text = "Enter your Zimbabwe phone number (+263)",
+                style = MaterialTheme.typography.bodyMedium,
+                color = Color.Gray
+            )
+
+            Spacer(modifier = Modifier.height(32.dp))
+
+            // Error message
+            AnimatedVisibility(
+                visible = errorMessage != null,
+                enter = fadeIn() + slideInVertically(),
+                exit = fadeOut()
+            ) {
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 16.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.errorContainer
+                    ),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(16.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Error,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.error
+                        )
+                        Text(
+                            text = errorMessage ?: "",
+                            color = MaterialTheme.colorScheme.error,
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                    }
+                }
+            }
+
+            // Phone field with Zimbabwe prefix
+            OutlinedTextField(
+                value = phone,
+                onValueChange = { authViewModel.updatePhone(it) },
+                label = { Text("Phone Number") },
+                placeholder = { Text("077 123 4567") },
+                leadingIcon = {
+                    Text(
+                        text = "+263",
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                },
+                modifier = Modifier.fillMaxWidth(),
+                keyboardOptions = KeyboardOptions(
+                    keyboardType = KeyboardType.Phone,
+                    imeAction = ImeAction.Next
+                ),
+                singleLine = true,
+                shape = RoundedCornerShape(12.dp)
+            )
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Name field
+            OutlinedTextField(
+                value = displayName,
+                onValueChange = { authViewModel.updateDisplayName(it) },
+                label = { Text("Your Name") },
+                placeholder = { Text("Enter your name") },
+                leadingIcon = {
+                    Icon(Icons.Outlined.Person, contentDescription = null)
+                },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true,
+                shape = RoundedCornerShape(12.dp)
+            )
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Role selector
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { showRoleSelector = !showRoleSelector },
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant
+                ),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Icon(
+                            imageVector = when (selectedRole) {
+                                UserRole.CUSTOMER -> Icons.Outlined.Person
+                                UserRole.RESTAURANT -> Icons.Outlined.Restaurant
+                                UserRole.DRIVER -> Icons.Outlined.DeliveryDining
+                                UserRole.ADMIN -> Icons.Outlined.AdminPanelSettings
+                            },
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                        Column {
+                            Text(
+                                text = "Account Type",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = Color.Gray
+                            )
+                            Text(
+                                text = selectedRole.displayName,
+                                style = MaterialTheme.typography.bodyLarge,
+                                fontWeight = FontWeight.Medium
+                            )
+                        }
+                    }
+                    Icon(
+                        imageVector = if (showRoleSelector) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                        contentDescription = null
+                    )
+                }
+            }
+
+            // Role options dropdown
+            AnimatedVisibility(
+                visible = showRoleSelector,
+                enter = expandVertically() + fadeIn(),
+                exit = shrinkVertically() + fadeOut()
+            ) {
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 8.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surface
+                    ),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Column(modifier = Modifier.padding(8.dp)) {
+                        UserRole.entries.forEach { role ->
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .clickable {
+                                        authViewModel.updateSelectedRole(role)
+                                        showRoleSelector = false
+                                    }
+                                    .background(
+                                        if (role == selectedRole)
+                                            MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)
+                                        else Color.Transparent
+                                    )
+                                    .padding(12.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                Icon(
+                                    imageVector = when (role) {
+                                        UserRole.CUSTOMER -> Icons.Outlined.Person
+                                        UserRole.RESTAURANT -> Icons.Outlined.Restaurant
+                                        UserRole.DRIVER -> Icons.Outlined.DeliveryDining
+                                        UserRole.ADMIN -> Icons.Outlined.AdminPanelSettings
+                                    },
+                                    contentDescription = null,
+                                    tint = if (role == selectedRole)
+                                        MaterialTheme.colorScheme.primary
+                                    else Color.Gray
+                                )
+                                Column {
+                                    Text(
+                                        text = role.displayName,
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        fontWeight = if (role == selectedRole) FontWeight.Medium else FontWeight.Normal
+                                    )
+                                    Text(
+                                        text = when (role) {
+                                            UserRole.CUSTOMER -> "Order food delivery"
+                                            UserRole.RESTAURANT -> "Manage your restaurant"
+                                            UserRole.DRIVER -> "Deliver food orders"
+                                            UserRole.ADMIN -> "Platform administration"
+                                        },
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = Color.Gray
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(32.dp))
+
+            // Send OTP button
+            Button(
+                onClick = { authViewModel.sendPhoneOtp() },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(56.dp),
+                enabled = !isLoading,
+                shape = RoundedCornerShape(12.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.primary
+                )
+            ) {
+                if (isLoading) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(24.dp),
+                        color = Color.White,
+                        strokeWidth = 2.dp
+                    )
+                } else {
+                    Text(
+                        text = "Send Verification Code",
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Info text
+            Text(
+                text = "We'll send you an SMS with a verification code. Standard SMS rates may apply.",
+                style = MaterialTheme.typography.labelSmall,
+                color = Color.Gray,
+                textAlign = TextAlign.Center
+            )
+
+            Spacer(modifier = Modifier.height(24.dp))
+
+            // Sign up link
+            Row(
+                horizontalArrangement = Arrangement.Center,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "Want to use email instead? ",
+                    color = Color.Gray
+                )
+                TextButton(onClick = onNavigateToSignUp) {
+                    Text(
+                        text = "Sign Up",
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(32.dp))
+        }
+    }
+}
+
+/**
+ * Phone OTP verification screen for phone number authentication.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun PhoneOtpScreen(
+    authViewModel: AuthViewModel,
+    onNavigateBack: () -> Unit
+) {
+    val phone by authViewModel.phone.collectAsStateWithLifecycle()
+    val isLoading by authViewModel.isLoading.collectAsStateWithLifecycle()
+    val errorMessage by authViewModel.errorMessage.collectAsStateWithLifecycle()
+    val authState by authViewModel.authState.collectAsStateWithLifecycle()
+
+    var otpCode by remember { mutableStateOf("") }
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Spacer(modifier = Modifier.height(24.dp))
+
+            // Back button
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                IconButton(onClick = onNavigateBack) {
+                    Icon(
+                        imageVector = Icons.Default.ArrowBack,
+                        contentDescription = "Back"
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(32.dp))
+
+            // Icon
+            Box(
+                modifier = Modifier
+                    .size(80.dp)
+                    .clip(RoundedCornerShape(20.dp))
+                    .background(MaterialTheme.colorScheme.primaryContainer),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Outlined.Sms,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(40.dp)
+                )
+            }
+
+            Spacer(modifier = Modifier.height(24.dp))
+
+            Text(
+                text = "Verify Your Phone",
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onBackground
+            )
+
+            Text(
+                text = if (authState is AuthState.OtpSent) 
+                    "Enter the 6-digit code sent to\n$phone"
+                else 
+                    "We've sent a verification code to\n$phone",
+                style = MaterialTheme.typography.bodyMedium,
+                color = Color.Gray,
+                textAlign = TextAlign.Center
+            )
+
+            Spacer(modifier = Modifier.height(32.dp))
+
+            // Error message
+            AnimatedVisibility(
+                visible = errorMessage != null,
+                enter = fadeIn() + slideInVertically(),
+                exit = fadeOut()
+            ) {
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 16.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.errorContainer
+                    ),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(16.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Error,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.error
+                        )
+                        Text(
+                            text = errorMessage ?: "",
+                            color = MaterialTheme.colorScheme.error,
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                    }
+                }
+            }
+
+            // OTP input field
+            OutlinedTextField(
+                value = otpCode,
+                onValueChange = { if (it.length <= 6 && it.all { c -> c.isDigit() }) otpCode = it },
+                label = { Text("Verification Code") },
+                placeholder = { Text("000000") },
+                leadingIcon = {
+                    Icon(
+                        imageVector = Icons.Outlined.Lock,
+                        contentDescription = null
+                    )
+                },
+                modifier = Modifier.fillMaxWidth(),
+                keyboardOptions = KeyboardOptions(
+                    keyboardType = KeyboardType.NumberPassword,
+                    imeAction = ImeAction.Done
+                ),
+                singleLine = true,
+                shape = RoundedCornerShape(12.dp)
+            )
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            // Resend code option
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.Center,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "Didn't receive code? ",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = Color.Gray
+                )
+                TextButton(
+                    onClick = { authViewModel.resendOtp() },
+                    enabled = !isLoading
+                ) {
+                    Text(
+                        text = "Resend",
+                        color = MaterialTheme.colorScheme.primary,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(32.dp))
+
+            // Verify button
+            Button(
+                onClick = { authViewModel.verifyOtp(otpCode) },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(56.dp),
+                enabled = !isLoading && otpCode.length == 6,
+                shape = RoundedCornerShape(12.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.primary
+                )
+            ) {
+                if (isLoading) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(24.dp),
+                        color = Color.White,
+                        strokeWidth = 2.dp
+                    )
+                } else {
+                    Text(
+                        text = "Verify",
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Back to sign in
+            TextButton(onClick = onNavigateBack) {
+                Text(
+                    text = "Use different phone number",
+                    color = MaterialTheme.colorScheme.primary
+                )
+            }
         }
     }
 }
