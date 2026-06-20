@@ -140,11 +140,13 @@ data class FirestoreOrder(
     val driverTip: Double = 0.0,
     val totalCost: Double = 0.0,
     // Status tracking
-    val status: String = "PENDING_ACCEPTANCE", // PENDING_ACCEPTANCE, PREPARING, READY_FOR_PICKUP, OUT_FOR_DELIVERY, COMPLETED, CANCELLED
+    val status: String = "PENDING_ACCEPTANCE", // PENDING_ACCEPTANCE, PAID, ACCEPTED, REJECTED, PREPARING, READY_FOR_PICKUP, OUT_FOR_DELIVERY, COMPLETED, CANCELLED
     val statusHistory: List<OrderStatusChange> = emptyList(),
     // Driver assignment
     val driverId: String? = null,
     val driverName: String? = null,
+    // Delivery status (for driver workflow)
+    val deliveryStatus: String = "UNASSIGNED", // UNASSIGNED, ASSIGNED, PICKED_UP, DELIVERED
     // Payment
     val paymentMethod: String = "", // ECO_CASH, ONE_MONEY, INNBUCKS, CASH_ON_DELIVERY
     val paymentRef: String = "",
@@ -160,6 +162,7 @@ data class FirestoreOrder(
     @ServerTimestamp
     val updatedAt: Timestamp? = null,
     val acceptedAt: Timestamp? = null,
+    val assignedAt: Timestamp? = null,
     val completedAt: Timestamp? = null
 )
 

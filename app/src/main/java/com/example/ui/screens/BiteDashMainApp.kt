@@ -49,6 +49,11 @@ import com.example.ui.viewmodel.PaymentStep
 import com.example.ui.viewmodel.UserProfile
 import com.example.ui.viewmodel.AuthViewModel
 import com.example.ui.viewmodel.UserRole
+import com.example.ui.viewmodel.restaurant.RestaurantOrderViewModel
+import com.example.ui.viewmodel.driver.DriverDeliveryViewModel
+import com.example.data.firebase.FirestoreService
+import com.example.ui.screens.restaurant.RestaurantOrdersScreen
+import com.example.ui.screens.driver.DriverOrdersScreen
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -3628,6 +3633,12 @@ fun RestaurantOwnerDashboard(
     val restaurant = restaurants.find { it.id == owner.restaurantId }
     var isEditMenuOpen by remember { mutableStateOf(false) }
     var showSwitchKitchenDialog by remember { mutableStateOf(false) }
+    var selectedTab by remember { mutableIntStateOf(0) }
+
+    // Create restaurant order view model for new order management
+    val restaurantViewModel = remember(owner.restaurantId) {
+        RestaurantOrderViewModel(FirestoreService(), owner.restaurantId)
+    }
 
     val matchedOrders = orderHistory.filter { it.restaurantName.trim().lowercase() == owner.restaurantName.trim().lowercase() }
     val activeOrders = matchedOrders.filter { it.status != "COMPLETED" }
@@ -3726,169 +3737,197 @@ fun RestaurantOwnerDashboard(
             )
         }
     ) { innerPadding ->
-        LazyColumn(
+        Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            // Stats Summary Card
-            item {
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(16.dp),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
-                ) {
-                    Row(
-                        modifier = Modifier.padding(16.dp).fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceAround
-                    ) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text("Total Fulfillments", style = MaterialTheme.typography.labelMedium, color = Color.Gray)
-                            Text("$" + String.format(Locale.US, "%.2f", completedOrders.sumOf { it.totalCost }), fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleLarge)
-                        }
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text("Orders Queue", style = MaterialTheme.typography.labelMedium, color = Color.Gray)
-                            Text("${activeOrders.size} Pending", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.primary)
-                        }
-                    }
-                }
-            }
-
-            // Quick Actions Block
-            item {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Button(
-                        onClick = { isEditMenuOpen = true },
-                        modifier = Modifier.weight(1f),
-                        shape = RoundedCornerShape(12.dp)
-                    ) {
-                        Icon(Icons.Default.List, contentDescription = "Manage Menu", modifier = Modifier.size(16.dp))
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text("Manage Menu Logs", fontSize = 12.sp)
-                    }
-                }
-            }
-
-            // Active Orders List
-            item {
-                Text(
-                    "Incoming Orders Queue",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold
+            TabRow(selectedTabIndex = selectedTab) {
+                Tab(
+                    selected = selectedTab == 0,
+                    onClick = { selectedTab = 0 },
+                    text = { Text("Order Management") }
+                )
+                Tab(
+                    selected = selectedTab == 1,
+                    onClick = { selectedTab = 1 },
+                    text = { Text("Dashboard") }
                 )
             }
 
-            if (activeOrders.isEmpty()) {
-                item {
-                    Box(
+            when (selectedTab) {
+                0 -> {
+                    RestaurantOrdersScreen(
+                        viewModel = restaurantViewModel,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                }
+                1 -> {
+                    LazyColumn(
                         modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 32.dp),
-                        contentAlignment = Alignment.Center
+                            .fillMaxSize()
+                            .padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(16.dp)
                     ) {
-                        Text("No active customer orders currently queued.", color = Color.Gray, style = MaterialTheme.typography.bodyMedium)
-                    }
-                }
-            } else {
-                items(activeOrders) { order ->
-                    ElevatedCard(
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                            Row(
+                        // Stats Summary Card
+                        item {
+                            Card(
                                 modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
+                                shape = RoundedCornerShape(16.dp),
+                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
                             ) {
-                                Text("Order #${order.id}", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleSmall)
-                                Badge(
-                                    containerColor = when (order.status) {
-                                        "PENDING_ACCEPTANCE" -> MaterialTheme.colorScheme.tertiaryContainer
-                                        "PREPARING" -> MaterialTheme.colorScheme.primaryContainer
-                                        else -> MaterialTheme.colorScheme.secondaryContainer
-                                    }
+                                Row(
+                                    modifier = Modifier.padding(16.dp).fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceAround
                                 ) {
-                                    Text(order.status)
-                                }
-                            }
-
-                            Text(order.itemsSummary, style = MaterialTheme.typography.bodyMedium)
-
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text("Payout: $" + String.format(Locale.US, "%.2f", order.totalCost) + " (" + order.paymentMethod + ")", fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-                                Text("Tel: ${order.paymentPhone}", color = Color.Gray, fontSize = 12.sp)
-                            }
-
-                            Divider(color = Color.LightGray.copy(alpha = 0.3f))
-
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.End,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                if (order.status == "PENDING_ACCEPTANCE") {
-                                    Button(
-                                        onClick = { viewModel.updateOrderStatusManual(order.id, "PREPARING") },
-                                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
-                                    ) {
-                                        Text("Accept & Start Cook")
+                                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                        Text("Total Fulfillments", style = MaterialTheme.typography.labelMedium, color = Color.Gray)
+                                        Text("$" + String.format(Locale.US, "%.2f", completedOrders.sumOf { it.totalCost }), fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleLarge)
                                     }
-                                } else if (order.status == "PREPARING") {
-                                    Button(
-                                        onClick = { viewModel.updateOrderStatusManual(order.id, "READY_FOR_PICKUP") },
-                                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary)
-                                    ) {
-                                        Text("Mark Cooked & Ready")
+                                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                        Text("Orders Queue", style = MaterialTheme.typography.labelMedium, color = Color.Gray)
+                                        Text("${activeOrders.size} Pending", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.primary)
                                     }
-                                } else if (order.status == "READY_FOR_PICKUP") {
-                                    Text("Waiting for Rider Pickup...", style = MaterialTheme.typography.labelMedium, color = Color.Gray)
-                                } else {
-                                    Text("Rider is delivering...", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
                                 }
                             }
                         }
-                    }
-                }
-            }
 
-            // Past Completed History
-            item {
-                Text(
-                    "Delivered Orders Ledger",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold
-                )
-            }
-
-            if (completedOrders.isEmpty()) {
-                item {
-                    Text("No historical transactions fulfilled under this kitchen shift.", color = Color.Gray, style = MaterialTheme.typography.bodySmall)
-                }
-            } else {
-                items(completedOrders) { order ->
-                    Card(
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(12.dp).fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Column {
-                                Text("Order #${order.id} • ${order.itemsSummary}", fontStyle = androidx.compose.ui.text.font.FontStyle.Italic, fontSize = 13.sp)
-                                Text("Paid $" + String.format(Locale.US, "%.2f", order.totalCost) + " via " + order.paymentMethod, fontSize = 11.sp, color = Color.Gray)
+                        // Quick Actions Block
+                        item {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Button(
+                                    onClick = { isEditMenuOpen = true },
+                                    modifier = Modifier.weight(1f),
+                                    shape = RoundedCornerShape(12.dp)
+                                ) {
+                                    Icon(Icons.Default.List, contentDescription = "Manage Menu", modifier = Modifier.size(16.dp))
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text("Manage Menu Logs", fontSize = 12.sp)
+                                }
                             }
-                            Icon(Icons.Default.CheckCircle, contentDescription = "Completed", tint = Color.Green, modifier = Modifier.size(18.dp))
+                        }
+
+                        // Active Orders List
+                        item {
+                            Text(
+                                "Incoming Orders Queue",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+
+                        if (activeOrders.isEmpty()) {
+                            item {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(vertical = 32.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text("No active customer orders currently queued.", color = Color.Gray, style = MaterialTheme.typography.bodyMedium)
+                                }
+                            }
+                        } else {
+                            items(activeOrders) { order ->
+                                ElevatedCard(
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Text("Order #${order.id}", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleSmall)
+                                            Badge(
+                                                containerColor = when (order.status) {
+                                                    "PENDING_ACCEPTANCE" -> MaterialTheme.colorScheme.tertiaryContainer
+                                                    "PREPARING" -> MaterialTheme.colorScheme.primaryContainer
+                                                    else -> MaterialTheme.colorScheme.secondaryContainer
+                                                }
+                                            ) {
+                                                Text(order.status)
+                                            }
+                                        }
+
+                                        Text(order.itemsSummary, style = MaterialTheme.typography.bodyMedium)
+
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Text("Payout: $" + String.format(Locale.US, "%.2f", order.totalCost) + " (" + order.paymentMethod + ")", fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                                            Text("Tel: ${order.paymentPhone}", color = Color.Gray, fontSize = 12.sp)
+                                        }
+
+                                        Divider(color = Color.LightGray.copy(alpha = 0.3f))
+
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.End,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            if (order.status == "PENDING_ACCEPTANCE") {
+                                                Button(
+                                                    onClick = { viewModel.updateOrderStatusManual(order.id, "PREPARING") },
+                                                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
+                                                ) {
+                                                    Text("Accept & Start Cook")
+                                                }
+                                            } else if (order.status == "PREPARING") {
+                                                Button(
+                                                    onClick = { viewModel.updateOrderStatusManual(order.id, "READY_FOR_PICKUP") },
+                                                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary)
+                                                ) {
+                                                    Text("Mark Cooked & Ready")
+                                                }
+                                            } else if (order.status == "READY_FOR_PICKUP") {
+                                                Text("Waiting for Rider Pickup...", style = MaterialTheme.typography.labelMedium, color = Color.Gray)
+                                            } else {
+                                                Text("Rider is delivering...", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        // Past Completed History
+                        item {
+                            Text(
+                                "Delivered Orders Ledger",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+
+                        if (completedOrders.isEmpty()) {
+                            item {
+                                Text("No historical transactions fulfilled under this kitchen shift.", color = Color.Gray, style = MaterialTheme.typography.bodySmall)
+                            }
+                        } else {
+                            items(completedOrders) { order ->
+                                Card(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(12.dp).fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Column {
+                                            Text("Order #${order.id} • ${order.itemsSummary}", fontStyle = androidx.compose.ui.text.font.FontStyle.Italic, fontSize = 13.sp)
+                                            Text("Paid $" + String.format(Locale.US, "%.2f", order.totalCost) + " via " + order.paymentMethod, fontSize = 11.sp, color = Color.Gray)
+                                        }
+                                        Icon(Icons.Default.CheckCircle, contentDescription = "Completed", tint = Color.Green, modifier = Modifier.size(18.dp))
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -3913,6 +3952,12 @@ fun DriverDashboard(
 ) {
     val orderHistory by viewModel.orderHistory.collectAsStateWithLifecycle()
     val trackingProgress by viewModel.trackingProgress.collectAsStateWithLifecycle()
+    var selectedTab by remember { mutableIntStateOf(0) }
+
+    // Create driver delivery view model
+    val driverViewModel = remember(driver.driverId) {
+        DriverDeliveryViewModel(FirestoreService(), driver.driverId, driver.driverName)
+    }
 
     val claimableOrders = orderHistory.filter { (it.status == "READY_FOR_PICKUP" || it.status == "PREPARING") && it.driverId == null }
     val myActiveOrders = orderHistory.filter { it.status == "OUT_FOR_DELIVERY" && it.driverId == driver.driverId }
@@ -3939,155 +3984,183 @@ fun DriverDashboard(
             )
         }
     ) { innerPadding ->
-        LazyColumn(
+        Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            // Rider shift earnings
-            item {
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(16.dp),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f))
-                ) {
-                    val baseEarnings = myCompletedOrders.size * 2.00
-                    val tipsEarnings = myCompletedOrders.sumOf { it.driverTip }
-                    val totalEarnings = baseEarnings + tipsEarnings
-
-                    Column(
-                        modifier = Modifier.padding(16.dp).fillMaxWidth(),
-                        verticalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceAround
-                        ) {
-                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                Text("Deliveries", style = MaterialTheme.typography.labelMedium, color = Color.Gray)
-                                Text("${myCompletedOrders.size} runs", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
-                            }
-                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                Text("Base Fees", style = MaterialTheme.typography.labelMedium, color = Color.Gray)
-                                Text("$" + String.format(Locale.US, "%.2f", baseEarnings), fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
-                            }
-                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                Text("Rider Tips", style = MaterialTheme.typography.labelMedium, color = Color.Gray)
-                                Text("$" + String.format(Locale.US, "%.2f", tipsEarnings), fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium, color = EcoCashGreen)
-                            }
-                        }
-                        Divider(color = MaterialTheme.colorScheme.primary.copy(alpha = 0.1f))
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text("Total Shift Payout", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium)
-                            Text("$" + String.format(Locale.US, "%.2f", totalEarnings), fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.primary)
-                        }
-                    }
-                }
-            }
-
-            // Active claim delivery Map Simulation
-            if (myActiveOrders.isNotEmpty()) {
-                item {
-                    Text(
-                        "Your Current Active Run",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
-
-                items(myActiveOrders) { order ->
-                    ElevatedCard(
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text("Order #${order.id} Run", fontWeight = FontWeight.Bold)
-                                Text("Status: Out For Delivery", color = MaterialTheme.colorScheme.primary, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                            }
-
-                            Text("Deliver from: ${order.restaurantName}", fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
-                            Text("Cargo: ${order.itemsSummary}\nPhone client: ${order.paymentPhone}", style = MaterialTheme.typography.bodySmall, color = Color.Gray)
-
-                            // Rider progress indicator bar
-                            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                Text("Your Simulation Route Progress:", style = MaterialTheme.typography.labelSmall, color = Color.Gray)
-                                LinearProgressIndicator(
-                                    progress = trackingProgress,
-                                    modifier = Modifier.fillMaxWidth().height(8.dp).clip(RoundedCornerShape(4.dp))
-                                )
-                            }
-
-                            Button(
-                                onClick = { viewModel.updateOrderStatusManual(order.id, "COMPLETED") },
-                                modifier = Modifier.fillMaxWidth(),
-                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2E7D32))
-                            ) {
-                                Icon(Icons.Default.Check, contentDescription = "Deliver")
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text("Confirm Doorstep Delivery & Handover")
-                            }
-                        }
-                    }
-                }
-            }
-
-            // Driver Jobs Board (orders prepared or ready)
-            item {
-                Text(
-                    "Harare Delivery Jobs Pool",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold
+            TabRow(selectedTabIndex = selectedTab) {
+                Tab(
+                    selected = selectedTab == 0,
+                    onClick = { selectedTab = 0 },
+                    text = { Text("My Deliveries") }
+                )
+                Tab(
+                    selected = selectedTab == 1,
+                    onClick = { selectedTab = 1 },
+                    text = { Text("Dashboard") }
                 )
             }
 
-            val jobs = claimableOrders
-            if (jobs.isEmpty()) {
-                item {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 24.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text("No deliveries currently in the queue. Ask a client to place a manual delivery order!", style = MaterialTheme.typography.bodyMedium, color = Color.Gray, textAlign = TextAlign.Center)
-                    }
+            when (selectedTab) {
+                0 -> {
+                    DriverOrdersScreen(
+                        viewModel = driverViewModel,
+                        modifier = Modifier.fillMaxSize()
+                    )
                 }
-            } else {
-                items(jobs) { job ->
-                    Card(
-                        modifier = Modifier.fillMaxWidth()
+                1 -> {
+                    LazyColumn(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(16.dp)
                     ) {
-                        Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Row(
+                        // Rider shift earnings
+                        item {
+                            Card(
                                 modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
+                                shape = RoundedCornerShape(16.dp),
+                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f))
                             ) {
-                                Text("Job #${job.id} • ${job.restaurantName}", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium)
-                                Badge(containerColor = MaterialTheme.colorScheme.primaryContainer) {
-                                    Text(job.status)
+                                val baseEarnings = myCompletedOrders.size * 2.00
+                                val tipsEarnings = myCompletedOrders.sumOf { it.driverTip }
+                                val totalEarnings = baseEarnings + tipsEarnings
+
+                                Column(
+                                    modifier = Modifier.padding(16.dp).fillMaxWidth(),
+                                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                                ) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceAround
+                                    ) {
+                                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                            Text("Deliveries", style = MaterialTheme.typography.labelMedium, color = Color.Gray)
+                                            Text("${myCompletedOrders.size} runs", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
+                                        }
+                                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                            Text("Base Fees", style = MaterialTheme.typography.labelMedium, color = Color.Gray)
+                                            Text("$" + String.format(Locale.US, "%.2f", baseEarnings), fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
+                                        }
+                                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                            Text("Rider Tips", style = MaterialTheme.typography.labelMedium, color = Color.Gray)
+                                            Text("$" + String.format(Locale.US, "%.2f", tipsEarnings), fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium, color = EcoCashGreen)
+                                        }
+                                    }
+                                    Divider(color = MaterialTheme.colorScheme.primary.copy(alpha = 0.1f))
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text("Total Shift Payout", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium)
+                                        Text("$" + String.format(Locale.US, "%.2f", totalEarnings), fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.primary)
+                                    }
                                 }
                             }
+                        }
 
-                            Text("Cargo: ${job.itemsSummary}", style = MaterialTheme.typography.bodySmall, color = Color.Gray)
-                            Text("Est Payout: $2.00 (Standard Delivery Surcharge)", fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary, fontSize = 12.sp)
+                        // Active claim delivery Map Simulation
+                        if (myActiveOrders.isNotEmpty()) {
+                            item {
+                                Text(
+                                    "Your Current Active Run",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
 
-                            Button(
-                                onClick = { viewModel.claimOrderManual(job.id, driver.driverId, driver.driverName) },
-                                modifier = Modifier.fillMaxWidth(),
-                                enabled = job.status == "READY_FOR_PICKUP"
-                            ) {
-                                Text(if (job.status == "READY_FOR_PICKUP") "Pick up & Start Journey" else "Waiting for kitchen to finish cooking...")
+                            items(myActiveOrders) { order ->
+                                ElevatedCard(
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Text("Order #${order.id} Run", fontWeight = FontWeight.Bold)
+                                            Text("Status: Out For Delivery", color = MaterialTheme.colorScheme.primary, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                                        }
+
+                                        Text("Deliver from: ${order.restaurantName}", fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+                                        Text("Cargo: ${order.itemsSummary}\nPhone client: ${order.paymentPhone}", style = MaterialTheme.typography.bodySmall, color = Color.Gray)
+
+                                        // Rider progress indicator bar
+                                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                            Text("Your Simulation Route Progress:", style = MaterialTheme.typography.labelSmall, color = Color.Gray)
+                                            LinearProgressIndicator(
+                                                progress = trackingProgress,
+                                                modifier = Modifier.fillMaxWidth().height(8.dp).clip(RoundedCornerShape(4.dp))
+                                            )
+                                        }
+
+                                        Button(
+                                            onClick = { viewModel.updateOrderStatusManual(order.id, "COMPLETED") },
+                                            modifier = Modifier.fillMaxWidth(),
+                                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2E7D32))
+                                        ) {
+                                            Icon(Icons.Default.Check, contentDescription = "Deliver")
+                                            Spacer(modifier = Modifier.width(4.dp))
+                                            Text("Confirm Doorstep Delivery & Handover")
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        // Driver Jobs Board (orders prepared or ready)
+                        item {
+                            Text(
+                                "Harare Delivery Jobs Pool",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+
+                        val jobs = claimableOrders
+                        if (jobs.isEmpty()) {
+                            item {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(vertical = 24.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text("No deliveries currently in the queue. Ask a client to place a manual delivery order!", style = MaterialTheme.typography.bodyMedium, color = Color.Gray, textAlign = TextAlign.Center)
+                                }
+                            }
+                        } else {
+                            items(jobs) { job ->
+                                Card(
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Text("Job #${job.id} • ${job.restaurantName}", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium)
+                                            Badge(containerColor = MaterialTheme.colorScheme.primaryContainer) {
+                                                Text(job.status)
+                                            }
+                                        }
+
+                                        Text("Cargo: ${job.itemsSummary}", style = MaterialTheme.typography.bodySmall, color = Color.Gray)
+                                        Text("Est Payout: $2.00 (Standard Delivery Surcharge)", fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary, fontSize = 12.sp)
+
+                                        Button(
+                                            onClick = { viewModel.claimOrderManual(job.id, driver.driverId, driver.driverName) },
+                                            modifier = Modifier.fillMaxWidth(),
+                                            enabled = job.status == "READY_FOR_PICKUP"
+                                        ) {
+                                            Text(if (job.status == "READY_FOR_PICKUP") "Pick up & Start Journey" else "Waiting for kitchen to finish cooking...")
+                                        }
+                                    }
+                                }
                             }
                         }
                     }
