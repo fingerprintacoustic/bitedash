@@ -68,9 +68,9 @@ secrets {
 
 dependencies {
   implementation(platform(libs.androidx.compose.bom))
-  implementation(platform(libs.firebase.bom))
-  implementation(libs.firebase.firestore.ktx)
-  implementation(libs.firebase.auth.ktx)
+  
+  implementation("com.google.firebase:firebase-firestore-ktx:25.1.4")
+  implementation("com.google.firebase:firebase-auth-ktx:23.1.0")
   implementation(libs.androidx.activity.compose)
   implementation(libs.androidx.compose.material.icons.core)
   implementation(libs.androidx.compose.material.icons.extended)
