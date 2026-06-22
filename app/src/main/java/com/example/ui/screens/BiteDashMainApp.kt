@@ -4650,6 +4650,7 @@ fun WebDashboardSimulatorDialog(
         }
     }
 }
+}
 
 @Composable
 private fun PaynowSettingsTab(viewModel: BiteDashViewModel) {

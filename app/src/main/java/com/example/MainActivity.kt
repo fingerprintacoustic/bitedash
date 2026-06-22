@@ -7,6 +7,7 @@ import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.*
+import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.ui.theme.MyApplicationTheme
@@ -41,7 +42,7 @@ class MainActivity : ComponentActivity() {
           Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
             when (authState) {
               is AuthState.Authenticated -> {
-                val currentUser = authViewModel.currentFirestoreUser.value
+                val currentUser by authViewModel.currentFirestoreUser.collectAsState()
                 val userRole = currentUser?.role?.let { UserRole.fromString(it) } ?: UserRole.CUSTOMER
                 
                 BiteDashMainApp(
@@ -59,7 +60,7 @@ class MainActivity : ComponentActivity() {
                 AuthenticationGate(
                   authViewModel = authViewModel,
                   onAuthenticated = { vm ->
-                    val currentUser = vm.currentFirestoreUser.value
+                    val currentUser by vm.currentFirestoreUser.collectAsState()
                     val userRole = currentUser?.role?.let { UserRole.fromString(it) } ?: UserRole.CUSTOMER
                     
                     BiteDashMainApp(

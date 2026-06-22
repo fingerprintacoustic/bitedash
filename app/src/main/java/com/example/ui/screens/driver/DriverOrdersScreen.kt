@@ -72,8 +72,104 @@ fun DriverOrdersScreen(
         onAcceptDelivery = viewModel::acceptDelivery,
         onPickupOrder = viewModel::pickupOrder,
         onCompleteDelivery = viewModel::completeDelivery,
-        onSelectOrder = viewModel::selectOrder,
         snackbarHostState = snackbarHostState,
         modifier = modifier
     )
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun DriverOrdersContent(
+    uiState: DriverDeliveryUiState,
+    onRefresh: () -> Unit,
+    onAcceptDelivery: (String) -> Unit,
+    onPickupOrder: (String) -> Unit,
+    onCompleteDelivery: (String) -> Unit,
+    snackbarHostState: SnackbarHostState,
+    modifier: Modifier = Modifier
+) {
+    var activeTab by remember { mutableIntStateOf(0) }
+
+    Scaffold(
+        modifier = modifier,
+        topBar = {
+            TopAppBar(
+                title = {
+                    Text(
+                        text = "My Deliveries",
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold
+                    )
+                },
+                actions = {
+                    IconButton(onClick = onRefresh) {
+                        Icon(Icons.Default.Refresh, contentDescription = "Refresh")
+                    }
+                }
+            )
+        },
+        snackbarHost = { SnackbarHost(snackbarHostState) }
+    ) { padding ->
+        Column(modifier = Modifier.padding(padding)) {
+            TabRow(selectedTabIndex = activeTab) {
+                Tab(
+                    selected = activeTab == 0,
+                    onClick = { activeTab = 0 },
+                    text = { Text("Available (${uiState.availableOrders.size})") }
+                )
+                Tab(
+                    selected = activeTab == 1,
+                    onClick = { activeTab = 1 },
+                    text = { Text("My Orders (${uiState.myDeliveries.size})") }
+                )
+            }
+
+            if (uiState.isLoading) {
+                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator()
+                }
+            } else {
+                PullToRefreshBox(
+                    isRefreshing = uiState.isLoading,
+                    onRefresh = onRefresh,
+                    modifier = Modifier.fillMaxSize()
+                ) {
+                    val orders = if (activeTab == 0) uiState.availableOrders else uiState.myDeliveries
+                    if (orders.isEmpty()) {
+                        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Icon(
+                                    imageVector = Icons.Default.LocalShipping,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(64.dp),
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
+                                )
+                                Spacer(modifier = Modifier.height(16.dp))
+                                Text(
+                                    text = if (activeTab == 0) "No available deliveries" else "No active orders",
+                                    style = MaterialTheme.typography.bodyLarge,
+                                    textAlign = TextAlign.Center,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    } else {
+                        LazyColumn(
+                            contentPadding = PaddingValues(16.dp),
+                            verticalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            items(orders) { order ->
+                                DriverOrderCard(
+                                    order = order,
+                                    onAcceptDelivery = { onAcceptDelivery(order.orderId) },
+                                    onPickupOrder = { onPickupOrder(order.orderId) },
+                                    onCompleteDelivery = { onCompleteDelivery(order.orderId) }
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
