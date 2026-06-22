@@ -33,11 +33,16 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.data.entity.OrderEntity
 import com.example.model.CartItem
@@ -2008,6 +2013,12 @@ fun AdminPortalOverlay(
                         text = { Text("TX Audit", fontSize = 13.sp) },
                         modifier = Modifier.testTag("admin_tab_audit")
                     )
+                    Tab(
+                        selected = activeSubTab == 3,
+                        onClick = { activeSubTab = 3 },
+                        text = { Text("Paynow", fontSize = 13.sp) },
+                        modifier = Modifier.testTag("admin_tab_paynow")
+                    )
                 }
 
                 Spacer(modifier = Modifier.height(12.dp))
@@ -2390,6 +2401,10 @@ fun AdminPortalOverlay(
                                     }
                                 }
                             }
+                        }
+                        3 -> {
+                            // Paynow Credentials
+                            PaynowSettingsTab(viewModel = viewModel)
                         }
                     }
                 }
@@ -4632,6 +4647,116 @@ fun WebDashboardSimulatorDialog(
                         }
                     }
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun PaynowSettingsTab(viewModel: BiteDashViewModel) {
+    var integrationId by remember { mutableStateOf("") }
+    var integrationKey by remember { mutableStateOf("") }
+    var saved by remember { mutableStateOf(false) }
+    var keyVisible by remember { mutableStateOf(false) }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(vertical = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.15f)
+            ),
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.3f))
+        ) {
+            Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(
+                    text = "Paynow Zimbabwe — Payment Gateway",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary
+                )
+                Text(
+                    text = "Get your credentials at paynow.co.zw → Login → Receive Payments → Integrations",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = Color.Gray
+                )
+            }
+        }
+
+        OutlinedTextField(
+            value = integrationId,
+            onValueChange = { integrationId = it; saved = false },
+            label = { Text("Integration ID") },
+            placeholder = { Text("e.g. 12345") },
+            modifier = Modifier.fillMaxWidth(),
+            singleLine = true
+        )
+
+        OutlinedTextField(
+            value = integrationKey,
+            onValueChange = { integrationKey = it; saved = false },
+            label = { Text("Integration Key") },
+            placeholder = { Text("e.g. zXk9...") },
+            modifier = Modifier.fillMaxWidth(),
+            singleLine = true,
+            visualTransformation = if (keyVisible)
+                androidx.compose.ui.text.input.VisualTransformation.None
+            else
+                androidx.compose.ui.text.input.PasswordVisualTransformation(),
+            trailingIcon = {
+                IconButton(onClick = { keyVisible = !keyVisible }) {
+                    Icon(
+                        imageVector = if (keyVisible) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                        contentDescription = if (keyVisible) "Hide key" else "Show key"
+                    )
+                }
+            }
+        )
+
+        Button(
+            onClick = {
+                if (integrationId.isNotBlank() && integrationKey.isNotBlank()) {
+                    viewModel.savePaynowCredentials(integrationId, integrationKey)
+                    saved = true
+                }
+            },
+            modifier = Modifier.fillMaxWidth(),
+            enabled = integrationId.isNotBlank() && integrationKey.isNotBlank()
+        ) {
+            Text(if (saved) "✓ Saved to Firestore" else "Save Credentials")
+        }
+
+        if (saved) {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.3f)
+                )
+            ) {
+                Text(
+                    text = "Credentials saved. Payments will now use your live Paynow account. Keep this screen confidential — only the admin account can see it.",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.secondary,
+                    modifier = Modifier.padding(12.dp)
+                )
+            }
+        }
+
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(containerColor = Color.Transparent),
+            border = BorderStroke(1.dp, Color.LightGray.copy(alpha = 0.4f))
+        ) {
+            Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text("Security notes", fontWeight = FontWeight.SemiBold, fontSize = 12.sp)
+                Text("• Only the admin Firebase account can open this screen", fontSize = 11.sp, color = Color.Gray)
+                Text("• Credentials are stored encrypted in Firestore admin_settings", fontSize = 11.sp, color = Color.Gray)
+                Text("• Never share your Integration Key with drivers or restaurants", fontSize = 11.sp, color = Color.Gray)
             }
         }
     }

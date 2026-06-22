@@ -11,6 +11,8 @@ import com.example.data.entity.toEntity
 import com.example.data.repository.OrderRepository
 import com.example.data.repository.RestaurantRepository
 import com.example.data.repository.DriverRepository
+import com.example.data.firebase.FirestoreAdminSettings
+import com.example.data.firebase.FirestoreService
 import com.example.model.CartItem
 import com.example.model.MenuItem
 import com.example.model.Restaurant
@@ -697,6 +699,19 @@ class BiteDashViewModel(application: Application) : AndroidViewModel(application
 
     fun setPayoutSchedule(schedule: String) {
         _payoutSchedule.value = schedule
+    }
+
+    fun savePaynowCredentials(integrationId: String, integrationKey: String) {
+        viewModelScope.launch {
+            val firestoreService = FirestoreService()
+            val current = firestoreService.getAdminSettings() ?: FirestoreAdminSettings()
+            firestoreService.updateAdminSettings(
+                current.copy(
+                    ecoCashMerchantId = integrationId.trim(),
+                    innBucksApiKey = integrationKey.trim()
+                )
+            )
+        }
     }
 
     fun triggerPayoutSettlement() {

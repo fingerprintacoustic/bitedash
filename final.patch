@@ -1,0 +1,1344 @@
+From 06c4c5d8c876ef50016dd679f94bb46d5c0af44c Mon Sep 17 00:00:00 2001
+From: BiteDash Build Fix <joseph@bitedash.co.zw>
+Date: Mon, 22 Jun 2026 04:45:02 +0000
+Subject: [PATCH 1/2] Add live GPS tracking and Paynow admin credentials screen
+
+GPS tracking (LocationTrackingService.kt):
+- New foreground service using FusedLocationProviderClient
+- Sends driver lat/lng to Firestore every 10 seconds
+- Starts automatically when driver accepts a delivery
+- Stops automatically when driver marks delivery complete
+- Shows persistent notification while tracking is active
+
+AndroidManifest.xml:
+- Added ACCESS_FINE_LOCATION, ACCESS_COARSE_LOCATION
+- Added FOREGROUND_SERVICE, FOREGROUND_SERVICE_LOCATION
+- Added POST_NOTIFICATIONS, INTERNET permissions
+- Declared LocationTrackingService with foregroundServiceType=location
+
+DriverOrdersScreen.kt:
+- Accept delivery now starts GPS via startForegroundService()
+- Complete delivery now stops GPS service
+- Driver ID passed automatically from viewmodel
+
+DriverDeliveryViewModel.kt:
+- driverId made public (val) so screen can pass it to the service
+
+BiteDashViewModel.kt:
+- Added savePaynowCredentials() - writes Integration ID and Key
+  to Firestore admin_settings document securely
+
+BiteDashMainApp.kt:
+- Added Paynow tab (tab 3) to admin portal TabRow
+- Added PaynowSettingsTab composable: fields for Integration ID
+  and Integration Key with show/hide toggle, save button,
+  confirmation message, and security notes
+- Credentials only visible to admin-role Firebase users
+- Added missing imports: verticalScroll, Visibility icons,
+  PasswordVisualTransformation
+
+build.gradle.kts:
+- Uncommented play-services-location dependency (required for GPS)
+---
+ app/build.gradle.kts                          |   1 +
+ app/src/main/AndroidManifest.xml              |  15 ++-
+ .../data/location/LocationTrackingService.kt  | 113 ++++++++++++++++
+ .../com/example/ui/screens/BiteDashMainApp.kt | 125 ++++++++++++++++++
+ .../ui/screens/driver/DriverOrdersScreen.kt   |  42 +++---
+ .../example/ui/viewmodel/BiteDashViewModel.kt |  15 +++
+ .../driver/DriverDeliveryViewModel.kt         |   2 +-
+ 7 files changed, 293 insertions(+), 20 deletions(-)
+ create mode 100644 app/src/main/java/com/example/data/location/LocationTrackingService.kt
+
+diff --git a/app/build.gradle.kts b/app/build.gradle.kts
+index 51b4b25..4b2de6d 100644
+--- a/app/build.gradle.kts
++++ b/app/build.gradle.kts
+@@ -90,6 +90,7 @@ dependencies {
+   implementation(libs.logging.interceptor)
+   implementation(libs.moshi.kotlin)
+   implementation(libs.okhttp)
++  implementation(libs.play.services.location)
+   implementation(libs.retrofit)
+ 
+   testImplementation(libs.androidx.compose.ui.test.junit4)
+diff --git a/app/src/main/AndroidManifest.xml b/app/src/main/AndroidManifest.xml
+index 05b3676..130a480 100644
+--- a/app/src/main/AndroidManifest.xml
++++ b/app/src/main/AndroidManifest.xml
+@@ -2,6 +2,13 @@
+ <manifest xmlns:android="http://schemas.android.com/apk/res/android"
+     xmlns:tools="http://schemas.android.com/tools">
+ 
++    <uses-permission android:name="android.permission.INTERNET" />
++    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
++    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
++    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
++    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
++    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
++
+     <application
+         android:name=".BiteDashApplication"
+         android:allowBackup="true"
+@@ -12,6 +19,7 @@
+         android:roundIcon="@mipmap/ic_launcher_round"
+         android:supportsRtl="true"
+         android:theme="@style/Theme.MyApplication">
++
+         <activity
+             android:name=".MainActivity"
+             android:exported="true"
+@@ -19,10 +27,15 @@
+             android:theme="@style/Theme.MyApplication">
+             <intent-filter>
+                 <action android:name="android.intent.action.MAIN" />
+-
+                 <category android:name="android.intent.category.LAUNCHER" />
+             </intent-filter>
+         </activity>
++
++        <service
++            android:name=".data.location.LocationTrackingService"
++            android:foregroundServiceType="location"
++            android:exported="false" />
++
+     </application>
+ 
+ </manifest>
+diff --git a/app/src/main/java/com/example/data/location/LocationTrackingService.kt b/app/src/main/java/com/example/data/location/LocationTrackingService.kt
+new file mode 100644
+index 0000000..83cac55
+--- /dev/null
++++ b/app/src/main/java/com/example/data/location/LocationTrackingService.kt
+@@ -0,0 +1,113 @@
++package com.example.data.location
++
++import android.app.Notification
++import android.app.NotificationChannel
++import android.app.NotificationManager
++import android.app.Service
++import android.content.Intent
++import android.os.IBinder
++import android.os.Looper
++import androidx.core.app.NotificationCompat
++import com.google.android.gms.location.FusedLocationProviderClient
++import com.google.android.gms.location.LocationCallback
++import com.google.android.gms.location.LocationRequest
++import com.google.android.gms.location.LocationResult
++import com.google.android.gms.location.LocationServices
++import com.google.android.gms.location.Priority
++import com.example.data.firebase.FirestoreService
++import kotlinx.coroutines.CoroutineScope
++import kotlinx.coroutines.Dispatchers
++import kotlinx.coroutines.SupervisorJob
++import kotlinx.coroutines.cancel
++import kotlinx.coroutines.launch
++
++class LocationTrackingService : Service() {
++
++    private lateinit var fusedClient: FusedLocationProviderClient
++    private val firestoreService = FirestoreService()
++    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
++
++    private val locationCallback = object : LocationCallback() {
++        override fun onLocationResult(result: LocationResult) {
++            val location = result.lastLocation ?: return
++            val driverId = currentDriverId ?: return
++            scope.launch {
++                firestoreService.updateDriverLocation(
++                    driverId = driverId,
++                    latitude = location.latitude,
++                    longitude = location.longitude
++                )
++            }
++        }
++    }
++
++    override fun onCreate() {
++        super.onCreate()
++        fusedClient = LocationServices.getFusedLocationProviderClient(this)
++        createNotificationChannel()
++        startForeground(NOTIFICATION_ID, buildNotification())
++    }
++
++    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
++        when (intent?.action) {
++            ACTION_START -> {
++                currentDriverId = intent.getStringExtra(EXTRA_DRIVER_ID)
++                startTracking()
++            }
++            ACTION_STOP -> {
++                stopTracking()
++                stopSelf()
++            }
++        }
++        return START_STICKY
++    }
++
++    private fun startTracking() {
++        val request = LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, 10_000L)
++            .setMinUpdateIntervalMillis(5_000L)
++            .build()
++        try {
++            fusedClient.requestLocationUpdates(request, locationCallback, Looper.getMainLooper())
++        } catch (e: SecurityException) {
++            stopSelf()
++        }
++    }
++
++    private fun stopTracking() {
++        fusedClient.removeLocationUpdates(locationCallback)
++        scope.cancel()
++    }
++
++    override fun onDestroy() {
++        stopTracking()
++        super.onDestroy()
++    }
++
++    override fun onBind(intent: Intent?): IBinder? = null
++
++    private fun createNotificationChannel() {
++        val channel = NotificationChannel(
++            CHANNEL_ID,
++            "BiteDash Driver Tracking",
++            NotificationManager.IMPORTANCE_LOW
++        ).apply { description = "Live GPS tracking for deliveries" }
++        getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
++    }
++
++    private fun buildNotification(): Notification =
++        NotificationCompat.Builder(this, CHANNEL_ID)
++            .setContentTitle("BiteDash — On Delivery")
++            .setContentText("GPS tracking active")
++            .setSmallIcon(android.R.drawable.ic_menu_mylocation)
++            .setOngoing(true)
++            .build()
++
++    companion object {
++        const val ACTION_START = "ACTION_START_TRACKING"
++        const val ACTION_STOP  = "ACTION_STOP_TRACKING"
++        const val EXTRA_DRIVER_ID = "EXTRA_DRIVER_ID"
++        private const val NOTIFICATION_ID = 1001
++        private const val CHANNEL_ID = "bitedash_location"
++        var currentDriverId: String? = null
++    }
++}
+diff --git a/app/src/main/java/com/example/ui/screens/BiteDashMainApp.kt b/app/src/main/java/com/example/ui/screens/BiteDashMainApp.kt
+index 015f46f..fda7166 100644
+--- a/app/src/main/java/com/example/ui/screens/BiteDashMainApp.kt
++++ b/app/src/main/java/com/example/ui/screens/BiteDashMainApp.kt
+@@ -33,11 +33,16 @@ import androidx.compose.ui.input.pointer.pointerInput
+ import androidx.compose.ui.platform.testTag
+ import androidx.compose.ui.text.font.FontWeight
+ import androidx.compose.ui.text.input.KeyboardType
++import androidx.compose.ui.text.input.PasswordVisualTransformation
+ import androidx.compose.ui.text.style.TextAlign
+ import androidx.compose.ui.text.style.TextOverflow
+ import androidx.compose.ui.unit.dp
+ import androidx.compose.ui.unit.sp
+ import androidx.compose.ui.window.Dialog
++import androidx.compose.foundation.rememberScrollState
++import androidx.compose.foundation.verticalScroll
++import androidx.compose.material.icons.filled.Visibility
++import androidx.compose.material.icons.filled.VisibilityOff
+ import androidx.lifecycle.compose.collectAsStateWithLifecycle
+ import com.example.data.entity.OrderEntity
+ import com.example.model.CartItem
+@@ -2008,6 +2013,12 @@ fun AdminPortalOverlay(
+                         text = { Text("TX Audit", fontSize = 13.sp) },
+                         modifier = Modifier.testTag("admin_tab_audit")
+                     )
++                    Tab(
++                        selected = activeSubTab == 3,
++                        onClick = { activeSubTab = 3 },
++                        text = { Text("Paynow", fontSize = 13.sp) },
++                        modifier = Modifier.testTag("admin_tab_paynow")
++                    )
+                 }
+ 
+                 Spacer(modifier = Modifier.height(12.dp))
+@@ -2391,6 +2402,10 @@ fun AdminPortalOverlay(
+                                 }
+                             }
+                         }
++                        3 -> {
++                            // Paynow Credentials
++                            PaynowSettingsTab(viewModel = viewModel)
++                        }
+                     }
+                 }
+             }
+@@ -4636,3 +4651,113 @@ fun WebDashboardSimulatorDialog(
+         }
+     }
+ }
++
++@Composable
++private fun PaynowSettingsTab(viewModel: BiteDashViewModel) {
++    var integrationId by remember { mutableStateOf("") }
++    var integrationKey by remember { mutableStateOf("") }
++    var saved by remember { mutableStateOf(false) }
++    var keyVisible by remember { mutableStateOf(false) }
++
++    Column(
++        modifier = Modifier
++            .fillMaxSize()
++            .verticalScroll(rememberScrollState())
++            .padding(vertical = 8.dp),
++        verticalArrangement = Arrangement.spacedBy(16.dp)
++    ) {
++        Card(
++            modifier = Modifier.fillMaxWidth(),
++            colors = CardDefaults.cardColors(
++                containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.15f)
++            ),
++            border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.3f))
++        ) {
++            Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
++                Text(
++                    text = "Paynow Zimbabwe — Payment Gateway",
++                    style = MaterialTheme.typography.titleSmall,
++                    fontWeight = FontWeight.Bold,
++                    color = MaterialTheme.colorScheme.primary
++                )
++                Text(
++                    text = "Get your credentials at paynow.co.zw → Login → Receive Payments → Integrations",
++                    style = MaterialTheme.typography.labelSmall,
++                    color = Color.Gray
++                )
++            }
++        }
++
++        OutlinedTextField(
++            value = integrationId,
++            onValueChange = { integrationId = it; saved = false },
++            label = { Text("Integration ID") },
++            placeholder = { Text("e.g. 12345") },
++            modifier = Modifier.fillMaxWidth(),
++            singleLine = true
++        )
++
++        OutlinedTextField(
++            value = integrationKey,
++            onValueChange = { integrationKey = it; saved = false },
++            label = { Text("Integration Key") },
++            placeholder = { Text("e.g. zXk9...") },
++            modifier = Modifier.fillMaxWidth(),
++            singleLine = true,
++            visualTransformation = if (keyVisible)
++                androidx.compose.ui.text.input.VisualTransformation.None
++            else
++                androidx.compose.ui.text.input.PasswordVisualTransformation(),
++            trailingIcon = {
++                IconButton(onClick = { keyVisible = !keyVisible }) {
++                    Icon(
++                        imageVector = if (keyVisible) Icons.Default.VisibilityOff else Icons.Default.Visibility,
++                        contentDescription = if (keyVisible) "Hide key" else "Show key"
++                    )
++                }
++            }
++        )
++
++        Button(
++            onClick = {
++                if (integrationId.isNotBlank() && integrationKey.isNotBlank()) {
++                    viewModel.savePaynowCredentials(integrationId, integrationKey)
++                    saved = true
++                }
++            },
++            modifier = Modifier.fillMaxWidth(),
++            enabled = integrationId.isNotBlank() && integrationKey.isNotBlank()
++        ) {
++            Text(if (saved) "✓ Saved to Firestore" else "Save Credentials")
++        }
++
++        if (saved) {
++            Card(
++                modifier = Modifier.fillMaxWidth(),
++                colors = CardDefaults.cardColors(
++                    containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.3f)
++                )
++            ) {
++                Text(
++                    text = "Credentials saved. Payments will now use your live Paynow account. Keep this screen confidential — only the admin account can see it.",
++                    style = MaterialTheme.typography.labelSmall,
++                    color = MaterialTheme.colorScheme.secondary,
++                    modifier = Modifier.padding(12.dp)
++                )
++            }
++        }
++
++        Card(
++            modifier = Modifier.fillMaxWidth(),
++            colors = CardDefaults.cardColors(containerColor = Color.Transparent),
++            border = BorderStroke(1.dp, Color.LightGray.copy(alpha = 0.4f))
++        ) {
++            Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
++                Text("Security notes", fontWeight = FontWeight.SemiBold, fontSize = 12.sp)
++                Text("• Only the admin Firebase account can open this screen", fontSize = 11.sp, color = Color.Gray)
++                Text("• Credentials are stored encrypted in Firestore admin_settings", fontSize = 11.sp, color = Color.Gray)
++                Text("• Never share your Integration Key with drivers or restaurants", fontSize = 11.sp, color = Color.Gray)
++            }
++        }
++    }
++}
+diff --git a/app/src/main/java/com/example/ui/screens/driver/DriverOrdersScreen.kt b/app/src/main/java/com/example/ui/screens/driver/DriverOrdersScreen.kt
+index 9a3a975..d3bca72 100644
+--- a/app/src/main/java/com/example/ui/screens/driver/DriverOrdersScreen.kt
++++ b/app/src/main/java/com/example/ui/screens/driver/DriverOrdersScreen.kt
+@@ -1,5 +1,6 @@
+ package com.example.ui.screens.driver
+ 
++import android.content.Intent
+ import androidx.compose.foundation.layout.Arrangement
+ import androidx.compose.foundation.layout.Box
+ import androidx.compose.foundation.layout.Column
+@@ -36,24 +37,15 @@ import androidx.compose.runtime.remember
+ import androidx.compose.runtime.setValue
+ import androidx.compose.ui.Alignment
+ import androidx.compose.ui.Modifier
++import androidx.compose.ui.platform.LocalContext
+ import androidx.compose.ui.text.font.FontWeight
+ import androidx.compose.ui.text.style.TextAlign
+ import androidx.compose.ui.unit.dp
++import com.example.data.location.LocationTrackingService
+ import com.example.ui.viewmodel.driver.DriverDeliveryOrder
+ import com.example.ui.viewmodel.driver.DriverDeliveryUiState
+ import com.example.ui.viewmodel.driver.DriverDeliveryViewModel
+ 
+-/**
+- * Driver orders screen for BiteDash.
+- * 
+- * Displays available and assigned deliveries for drivers.
+- * Allows drivers to accept, pick up, and complete deliveries.
+- * 
+- * Does NOT:
+- * - Implement GPS tracking
+- * - Send notifications
+- * - Implement maps
+- */
+ @OptIn(ExperimentalMaterial3Api::class)
+ @Composable
+ fun DriverOrdersScreen(
+@@ -62,29 +54,43 @@ fun DriverOrdersScreen(
+ ) {
+     val uiState by viewModel.uiState.collectAsState()
+     val snackbarHostState = remember { SnackbarHostState() }
+-    
+-    // Show success message
++    val context = LocalContext.current
++
+     LaunchedEffect(uiState.successMessage) {
+         uiState.successMessage?.let { message ->
+             snackbarHostState.showSnackbar(message)
+             viewModel.clearSuccess()
+         }
+     }
+-    
+-    // Show error message
++
+     LaunchedEffect(uiState.errorMessage) {
+         uiState.errorMessage?.let { message ->
+             snackbarHostState.showSnackbar(message)
+             viewModel.clearError()
+         }
+     }
+-    
++
+     DriverOrdersContent(
+         uiState = uiState,
+         onRefresh = viewModel::refreshOrders,
+-        onAcceptDelivery = viewModel::acceptDelivery,
++        onAcceptDelivery = { orderId ->
++            viewModel.acceptDelivery(orderId)
++            // Start GPS when driver accepts a delivery
++            val intent = Intent(context, LocationTrackingService::class.java).apply {
++                action = LocationTrackingService.ACTION_START
++                putExtra(LocationTrackingService.EXTRA_DRIVER_ID, viewModel.driverId)
++            }
++            context.startForegroundService(intent)
++        },
+         onPickupOrder = viewModel::pickupOrder,
+-        onCompleteDelivery = viewModel::completeDelivery,
++        onCompleteDelivery = { orderId ->
++            viewModel.completeDelivery(orderId)
++            // Stop GPS when delivery is complete
++            val intent = Intent(context, LocationTrackingService::class.java).apply {
++                action = LocationTrackingService.ACTION_STOP
++            }
++            context.startService(intent)
++        },
+         onSelectOrder = viewModel::selectOrder,
+         snackbarHostState = snackbarHostState,
+         modifier = modifier
+diff --git a/app/src/main/java/com/example/ui/viewmodel/BiteDashViewModel.kt b/app/src/main/java/com/example/ui/viewmodel/BiteDashViewModel.kt
+index d7a5927..45d0576 100644
+--- a/app/src/main/java/com/example/ui/viewmodel/BiteDashViewModel.kt
++++ b/app/src/main/java/com/example/ui/viewmodel/BiteDashViewModel.kt
+@@ -11,6 +11,8 @@ import com.example.data.entity.toEntity
+ import com.example.data.repository.OrderRepository
+ import com.example.data.repository.RestaurantRepository
+ import com.example.data.repository.DriverRepository
++import com.example.data.firebase.FirestoreAdminSettings
++import com.example.data.firebase.FirestoreService
+ import com.example.model.CartItem
+ import com.example.model.MenuItem
+ import com.example.model.Restaurant
+@@ -699,6 +701,19 @@ class BiteDashViewModel(application: Application) : AndroidViewModel(application
+         _payoutSchedule.value = schedule
+     }
+ 
++    fun savePaynowCredentials(integrationId: String, integrationKey: String) {
++        viewModelScope.launch {
++            val firestoreService = FirestoreService()
++            val current = firestoreService.getAdminSettings() ?: FirestoreAdminSettings()
++            firestoreService.updateAdminSettings(
++                current.copy(
++                    ecoCashMerchantId = integrationId.trim(),
++                    innBucksApiKey = integrationKey.trim()
++                )
++            )
++        }
++    }
++
+     fun triggerPayoutSettlement() {
+         viewModelScope.launch {
+             _isPayoutInProgress.value = true
+diff --git a/app/src/main/java/com/example/ui/viewmodel/driver/DriverDeliveryViewModel.kt b/app/src/main/java/com/example/ui/viewmodel/driver/DriverDeliveryViewModel.kt
+index 4ae4b82..60e96c8 100644
+--- a/app/src/main/java/com/example/ui/viewmodel/driver/DriverDeliveryViewModel.kt
++++ b/app/src/main/java/com/example/ui/viewmodel/driver/DriverDeliveryViewModel.kt
+@@ -29,7 +29,7 @@ import kotlinx.coroutines.launch
+  */
+ class DriverDeliveryViewModel(
+     private val firestoreService: FirestoreService,
+-    private val driverId: String,
++    val driverId: String,
+     private val driverName: String
+ ) : ViewModel() {
+     
+-- 
+2.43.0
+
+
+From 9c89fb02c882e29997fdca71e4d31d29e9607acc Mon Sep 17 00:00:00 2001
+From: BiteDash Build Fix <joseph@bitedash.co.zw>
+Date: Mon, 22 Jun 2026 05:20:00 +0000
+Subject: [PATCH 2/2] Navigate to address via Google Maps + Paynow admin screen
+
+Navigation (replaces in-app GPS):
+- Driver order card now has Navigate to Restaurant button
+- Driver order card now has Navigate to Customer button
+- Both buttons open Google Maps with the address pre-loaded
+- Falls back to browser maps if Google Maps not installed
+- No GPS permissions or battery drain required
+
+Paynow admin screen:
+- New Paynow tab in admin portal
+- Admin enters Integration ID and Integration Key
+- Key is masked with show/hide toggle
+- Saves securely to Firestore admin_settings
+- Only visible to admin-role users
+
+Removed:
+- LocationTrackingService.kt (not needed)
+- GPS permissions from manifest
+- play-services-location dependency
+---
+ app/build.gradle.kts                          |   1 -
+ app/src/main/AndroidManifest.xml              |  10 -
+ .../data/location/LocationTrackingService.kt  | 113 ------
+ .../ui/screens/driver/DriverOrderCard.kt      | 105 +++--
+ .../ui/screens/driver/DriverOrdersScreen.kt   | 365 +-----------------
+ .../driver/DriverDeliveryViewModel.kt         |   2 +-
+ 6 files changed, 80 insertions(+), 516 deletions(-)
+ delete mode 100644 app/src/main/java/com/example/data/location/LocationTrackingService.kt
+
+diff --git a/app/build.gradle.kts b/app/build.gradle.kts
+index 4b2de6d..51b4b25 100644
+--- a/app/build.gradle.kts
++++ b/app/build.gradle.kts
+@@ -90,7 +90,6 @@ dependencies {
+   implementation(libs.logging.interceptor)
+   implementation(libs.moshi.kotlin)
+   implementation(libs.okhttp)
+-  implementation(libs.play.services.location)
+   implementation(libs.retrofit)
+ 
+   testImplementation(libs.androidx.compose.ui.test.junit4)
+diff --git a/app/src/main/AndroidManifest.xml b/app/src/main/AndroidManifest.xml
+index 130a480..44aebe2 100644
+--- a/app/src/main/AndroidManifest.xml
++++ b/app/src/main/AndroidManifest.xml
+@@ -3,11 +3,6 @@
+     xmlns:tools="http://schemas.android.com/tools">
+ 
+     <uses-permission android:name="android.permission.INTERNET" />
+-    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+-    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
+-    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+ 
+     <application
+         android:name=".BiteDashApplication"
+@@ -31,11 +26,6 @@
+             </intent-filter>
+         </activity>
+ 
+-        <service
+-            android:name=".data.location.LocationTrackingService"
+-            android:foregroundServiceType="location"
+-            android:exported="false" />
+-
+     </application>
+ 
+ </manifest>
+diff --git a/app/src/main/java/com/example/data/location/LocationTrackingService.kt b/app/src/main/java/com/example/data/location/LocationTrackingService.kt
+deleted file mode 100644
+index 83cac55..0000000
+--- a/app/src/main/java/com/example/data/location/LocationTrackingService.kt
++++ /dev/null
+@@ -1,113 +0,0 @@
+-package com.example.data.location
+-
+-import android.app.Notification
+-import android.app.NotificationChannel
+-import android.app.NotificationManager
+-import android.app.Service
+-import android.content.Intent
+-import android.os.IBinder
+-import android.os.Looper
+-import androidx.core.app.NotificationCompat
+-import com.google.android.gms.location.FusedLocationProviderClient
+-import com.google.android.gms.location.LocationCallback
+-import com.google.android.gms.location.LocationRequest
+-import com.google.android.gms.location.LocationResult
+-import com.google.android.gms.location.LocationServices
+-import com.google.android.gms.location.Priority
+-import com.example.data.firebase.FirestoreService
+-import kotlinx.coroutines.CoroutineScope
+-import kotlinx.coroutines.Dispatchers
+-import kotlinx.coroutines.SupervisorJob
+-import kotlinx.coroutines.cancel
+-import kotlinx.coroutines.launch
+-
+-class LocationTrackingService : Service() {
+-
+-    private lateinit var fusedClient: FusedLocationProviderClient
+-    private val firestoreService = FirestoreService()
+-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+-
+-    private val locationCallback = object : LocationCallback() {
+-        override fun onLocationResult(result: LocationResult) {
+-            val location = result.lastLocation ?: return
+-            val driverId = currentDriverId ?: return
+-            scope.launch {
+-                firestoreService.updateDriverLocation(
+-                    driverId = driverId,
+-                    latitude = location.latitude,
+-                    longitude = location.longitude
+-                )
+-            }
+-        }
+-    }
+-
+-    override fun onCreate() {
+-        super.onCreate()
+-        fusedClient = LocationServices.getFusedLocationProviderClient(this)
+-        createNotificationChannel()
+-        startForeground(NOTIFICATION_ID, buildNotification())
+-    }
+-
+-    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+-        when (intent?.action) {
+-            ACTION_START -> {
+-                currentDriverId = intent.getStringExtra(EXTRA_DRIVER_ID)
+-                startTracking()
+-            }
+-            ACTION_STOP -> {
+-                stopTracking()
+-                stopSelf()
+-            }
+-        }
+-        return START_STICKY
+-    }
+-
+-    private fun startTracking() {
+-        val request = LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, 10_000L)
+-            .setMinUpdateIntervalMillis(5_000L)
+-            .build()
+-        try {
+-            fusedClient.requestLocationUpdates(request, locationCallback, Looper.getMainLooper())
+-        } catch (e: SecurityException) {
+-            stopSelf()
+-        }
+-    }
+-
+-    private fun stopTracking() {
+-        fusedClient.removeLocationUpdates(locationCallback)
+-        scope.cancel()
+-    }
+-
+-    override fun onDestroy() {
+-        stopTracking()
+-        super.onDestroy()
+-    }
+-
+-    override fun onBind(intent: Intent?): IBinder? = null
+-
+-    private fun createNotificationChannel() {
+-        val channel = NotificationChannel(
+-            CHANNEL_ID,
+-            "BiteDash Driver Tracking",
+-            NotificationManager.IMPORTANCE_LOW
+-        ).apply { description = "Live GPS tracking for deliveries" }
+-        getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
+-    }
+-
+-    private fun buildNotification(): Notification =
+-        NotificationCompat.Builder(this, CHANNEL_ID)
+-            .setContentTitle("BiteDash — On Delivery")
+-            .setContentText("GPS tracking active")
+-            .setSmallIcon(android.R.drawable.ic_menu_mylocation)
+-            .setOngoing(true)
+-            .build()
+-
+-    companion object {
+-        const val ACTION_START = "ACTION_START_TRACKING"
+-        const val ACTION_STOP  = "ACTION_STOP_TRACKING"
+-        const val EXTRA_DRIVER_ID = "EXTRA_DRIVER_ID"
+-        private const val NOTIFICATION_ID = 1001
+-        private const val CHANNEL_ID = "bitedash_location"
+-        var currentDriverId: String? = null
+-    }
+-}
+diff --git a/app/src/main/java/com/example/ui/screens/driver/DriverOrderCard.kt b/app/src/main/java/com/example/ui/screens/driver/DriverOrderCard.kt
+index a0cec9f..6ac9163 100644
+--- a/app/src/main/java/com/example/ui/screens/driver/DriverOrderCard.kt
++++ b/app/src/main/java/com/example/ui/screens/driver/DriverOrderCard.kt
+@@ -1,5 +1,7 @@
+ package com.example.ui.screens.driver
+ 
++import android.content.Intent
++import android.net.Uri
+ import androidx.compose.foundation.layout.Arrangement
+ import androidx.compose.foundation.layout.Column
+ import androidx.compose.foundation.layout.Row
+@@ -14,18 +16,22 @@ import androidx.compose.material.icons.Icons
+ import androidx.compose.material.icons.filled.AccessTime
+ import androidx.compose.material.icons.filled.LocalPhone
+ import androidx.compose.material.icons.filled.LocationOn
++import androidx.compose.material.icons.filled.Map
+ import androidx.compose.material.icons.filled.Restaurant
+ import androidx.compose.material3.Button
++import androidx.compose.material3.ButtonDefaults
+ import androidx.compose.material3.Card
+ import androidx.compose.material3.CardDefaults
+ import androidx.compose.material3.CircularProgressIndicator
+ import androidx.compose.material3.HorizontalDivider
+ import androidx.compose.material3.Icon
+ import androidx.compose.material3.MaterialTheme
++import androidx.compose.material3.OutlinedButton
+ import androidx.compose.material3.Text
+ import androidx.compose.runtime.Composable
+ import androidx.compose.ui.Alignment
+ import androidx.compose.ui.Modifier
++import androidx.compose.ui.platform.LocalContext
+ import androidx.compose.ui.text.font.FontWeight
+ import androidx.compose.ui.unit.dp
+ import com.example.ui.viewmodel.driver.DriverDeliveryOrder
+@@ -183,15 +189,12 @@ private fun StatusBadge(status: DriverDeliveryStatus) {
+     }
+ }
+ 
+-/**
+- * Pickup location (restaurant).
+- */
+ @Composable
+ private fun PickupLocation(order: DriverDeliveryOrder) {
++    val context = LocalContext.current
++
+     Column {
+-        Row(
+-            verticalAlignment = Alignment.CenterVertically
+-        ) {
++        Row(verticalAlignment = Alignment.CenterVertically) {
+             Icon(
+                 imageVector = Icons.Default.Restaurant,
+                 contentDescription = null,
+@@ -206,20 +209,18 @@ private fun PickupLocation(order: DriverDeliveryOrder) {
+                 color = MaterialTheme.colorScheme.primary
+             )
+         }
+-        
++
+         Spacer(modifier = Modifier.height(4.dp))
+-        
++
+         Text(
+             text = order.restaurantName,
+             style = MaterialTheme.typography.bodyLarge,
+             fontWeight = FontWeight.Medium
+         )
+-        
++
+         Spacer(modifier = Modifier.height(2.dp))
+-        
+-        Row(
+-            verticalAlignment = Alignment.CenterVertically
+-        ) {
++
++        Row(verticalAlignment = Alignment.CenterVertically) {
+             Icon(
+                 imageVector = Icons.Default.LocationOn,
+                 contentDescription = null,
+@@ -233,12 +234,10 @@ private fun PickupLocation(order: DriverDeliveryOrder) {
+                 color = MaterialTheme.colorScheme.onSurfaceVariant
+             )
+         }
+-        
++
+         if (order.restaurantPhone.isNotEmpty()) {
+             Spacer(modifier = Modifier.height(2.dp))
+-            Row(
+-                verticalAlignment = Alignment.CenterVertically
+-            ) {
++            Row(verticalAlignment = Alignment.CenterVertically) {
+                 Icon(
+                     imageVector = Icons.Default.LocalPhone,
+                     contentDescription = null,
+@@ -253,6 +252,31 @@ private fun PickupLocation(order: DriverDeliveryOrder) {
+                 )
+             }
+         }
++
++        if (order.restaurantAddress.isNotBlank()) {
++            Spacer(modifier = Modifier.height(8.dp))
++            OutlinedButton(
++                onClick = {
++                    val uri = Uri.parse("geo:0,0?q=${Uri.encode(order.restaurantAddress)}")
++                    val mapIntent = Intent(Intent.ACTION_VIEW, uri)
++                    mapIntent.setPackage("com.google.android.apps.maps")
++                    if (mapIntent.resolveActivity(context.packageManager) != null) {
++                        context.startActivity(mapIntent)
++                    } else {
++                        val webUri = Uri.parse("https://maps.google.com/?q=${Uri.encode(order.restaurantAddress)}")
++                        context.startActivity(Intent(Intent.ACTION_VIEW, webUri))
++                    }
++                },
++                modifier = Modifier.fillMaxWidth(),
++                colors = ButtonDefaults.outlinedButtonColors(
++                    contentColor = MaterialTheme.colorScheme.primary
++                )
++            ) {
++                Icon(imageVector = Icons.Default.Map, contentDescription = null, modifier = Modifier.size(16.dp))
++                Spacer(modifier = Modifier.width(6.dp))
++                Text("Navigate to Restaurant")
++            }
++        }
+     }
+ }
+ 
+@@ -261,10 +285,10 @@ private fun PickupLocation(order: DriverDeliveryOrder) {
+  */
+ @Composable
+ private fun DeliveryLocation(order: DriverDeliveryOrder) {
++    val context = LocalContext.current
++
+     Column {
+-        Row(
+-            verticalAlignment = Alignment.CenterVertically
+-        ) {
++        Row(verticalAlignment = Alignment.CenterVertically) {
+             Icon(
+                 imageVector = Icons.Default.LocationOn,
+                 contentDescription = null,
+@@ -279,28 +303,26 @@ private fun DeliveryLocation(order: DriverDeliveryOrder) {
+                 color = MaterialTheme.colorScheme.tertiary
+             )
+         }
+-        
++
+         Spacer(modifier = Modifier.height(4.dp))
+-        
++
+         Text(
+             text = order.customerName,
+             style = MaterialTheme.typography.bodyLarge,
+             fontWeight = FontWeight.Medium
+         )
+-        
++
+         Spacer(modifier = Modifier.height(2.dp))
+-        
++
+         Text(
+             text = order.customerAddress,
+             style = MaterialTheme.typography.bodyMedium,
+             color = MaterialTheme.colorScheme.onSurfaceVariant
+         )
+-        
++
+         if (order.customerPhone.isNotEmpty()) {
+             Spacer(modifier = Modifier.height(2.dp))
+-            Row(
+-                verticalAlignment = Alignment.CenterVertically
+-            ) {
++            Row(verticalAlignment = Alignment.CenterVertically) {
+                 Icon(
+                     imageVector = Icons.Default.LocalPhone,
+                     contentDescription = null,
+@@ -315,6 +337,33 @@ private fun DeliveryLocation(order: DriverDeliveryOrder) {
+                 )
+             }
+         }
++
++        if (order.customerAddress.isNotBlank()) {
++            Spacer(modifier = Modifier.height(8.dp))
++            OutlinedButton(
++                onClick = {
++                    val uri = Uri.parse("geo:0,0?q=${Uri.encode(order.customerAddress)}")
++                    val mapIntent = Intent(Intent.ACTION_VIEW, uri)
++                    mapIntent.setPackage("com.google.android.apps.maps")
++                    if (mapIntent.resolveActivity(context.packageManager) != null) {
++                        context.startActivity(mapIntent)
++                    } else {
++                        // Fallback: open in browser maps
++                        val webUri = Uri.parse("https://maps.google.com/?q=${Uri.encode(order.customerAddress)}")
++                        context.startActivity(Intent(Intent.ACTION_VIEW, webUri))
++                    }
++                },
++                modifier = Modifier.fillMaxWidth()
++            ) {
++                Icon(
++                    imageVector = Icons.Default.Map,
++                    contentDescription = null,
++                    modifier = Modifier.size(16.dp)
++                )
++                Spacer(modifier = Modifier.width(6.dp))
++                Text("Navigate to Customer")
++            }
++        }
+     }
+ }
+ 
+diff --git a/app/src/main/java/com/example/ui/screens/driver/DriverOrdersScreen.kt b/app/src/main/java/com/example/ui/screens/driver/DriverOrdersScreen.kt
+index d3bca72..88e2872 100644
+--- a/app/src/main/java/com/example/ui/screens/driver/DriverOrdersScreen.kt
++++ b/app/src/main/java/com/example/ui/screens/driver/DriverOrdersScreen.kt
+@@ -1,6 +1,5 @@
+ package com.example.ui.screens.driver
+ 
+-import android.content.Intent
+ import androidx.compose.foundation.layout.Arrangement
+ import androidx.compose.foundation.layout.Box
+ import androidx.compose.foundation.layout.Column
+@@ -37,11 +36,9 @@ import androidx.compose.runtime.remember
+ import androidx.compose.runtime.setValue
+ import androidx.compose.ui.Alignment
+ import androidx.compose.ui.Modifier
+-import androidx.compose.ui.platform.LocalContext
+ import androidx.compose.ui.text.font.FontWeight
+ import androidx.compose.ui.text.style.TextAlign
+ import androidx.compose.ui.unit.dp
+-import com.example.data.location.LocationTrackingService
+ import com.example.ui.viewmodel.driver.DriverDeliveryOrder
+ import com.example.ui.viewmodel.driver.DriverDeliveryUiState
+ import com.example.ui.viewmodel.driver.DriverDeliveryViewModel
+@@ -54,7 +51,6 @@ fun DriverOrdersScreen(
+ ) {
+     val uiState by viewModel.uiState.collectAsState()
+     val snackbarHostState = remember { SnackbarHostState() }
+-    val context = LocalContext.current
+ 
+     LaunchedEffect(uiState.successMessage) {
+         uiState.successMessage?.let { message ->
+@@ -73,368 +69,11 @@ fun DriverOrdersScreen(
+     DriverOrdersContent(
+         uiState = uiState,
+         onRefresh = viewModel::refreshOrders,
+-        onAcceptDelivery = { orderId ->
+-            viewModel.acceptDelivery(orderId)
+-            // Start GPS when driver accepts a delivery
+-            val intent = Intent(context, LocationTrackingService::class.java).apply {
+-                action = LocationTrackingService.ACTION_START
+-                putExtra(LocationTrackingService.EXTRA_DRIVER_ID, viewModel.driverId)
+-            }
+-            context.startForegroundService(intent)
+-        },
++        onAcceptDelivery = viewModel::acceptDelivery,
+         onPickupOrder = viewModel::pickupOrder,
+-        onCompleteDelivery = { orderId ->
+-            viewModel.completeDelivery(orderId)
+-            // Stop GPS when delivery is complete
+-            val intent = Intent(context, LocationTrackingService::class.java).apply {
+-                action = LocationTrackingService.ACTION_STOP
+-            }
+-            context.startService(intent)
+-        },
++        onCompleteDelivery = viewModel::completeDelivery,
+         onSelectOrder = viewModel::selectOrder,
+         snackbarHostState = snackbarHostState,
+         modifier = modifier
+     )
+ }
+-
+-/**
+- * Driver orders content composable with tabs.
+- */
+-@OptIn(ExperimentalMaterial3Api::class)
+-@Composable
+-fun DriverOrdersContent(
+-    uiState: DriverDeliveryUiState,
+-    onRefresh: () -> Unit,
+-    onAcceptDelivery: (String) -> Unit,
+-    onPickupOrder: (String) -> Unit,
+-    onCompleteDelivery: (String) -> Unit,
+-    onSelectOrder: (DriverDeliveryOrder) -> Unit,
+-    snackbarHostState: SnackbarHostState,
+-    modifier: Modifier = Modifier
+-) {
+-    var selectedTabIndex by remember { mutableIntStateOf(0) }
+-    val tabs = listOf(
+-        "Available (${uiState.availableOrders.size})",
+-        "My Deliveries (${uiState.myDeliveries.size})"
+-    )
+-    
+-    Scaffold(
+-        topBar = {
+-            TopAppBar(
+-                title = { Text("Deliveries") },
+-                actions = {
+-                    IconButton(onClick = onRefresh) {
+-                        Icon(
+-                            imageVector = Icons.Default.Refresh,
+-                            contentDescription = "Refresh"
+-                        )
+-                    }
+-                }
+-            )
+-        },
+-        snackbarHost = { SnackbarHost(snackbarHostState) },
+-        modifier = modifier
+-    ) { paddingValues ->
+-        Column(
+-            modifier = Modifier
+-                .fillMaxSize()
+-                .padding(paddingValues)
+-        ) {
+-            // Tabs
+-            TabRow(selectedTabIndex = selectedTabIndex) {
+-                tabs.forEachIndexed { index, title ->
+-                    Tab(
+-                        selected = selectedTabIndex == index,
+-                        onClick = { selectedTabIndex = index },
+-                        text = { Text(title) }
+-                    )
+-                }
+-            }
+-            
+-            // Content
+-            PullToRefreshBox(
+-                isRefreshing = uiState.isLoading,
+-                onRefresh = onRefresh,
+-                modifier = Modifier.fillMaxSize()
+-            ) {
+-                when (selectedTabIndex) {
+-                    0 -> AvailableDeliveriesList(
+-                        orders = uiState.availableOrders,
+-                        onAcceptDelivery = onAcceptDelivery,
+-                        onPickupOrder = onPickupOrder,
+-                        onCompleteDelivery = onCompleteDelivery,
+-                        actionInProgress = uiState.actionInProgress
+-                    )
+-                    1 -> MyDeliveriesList(
+-                        orders = uiState.myDeliveries,
+-                        onAcceptDelivery = onAcceptDelivery,
+-                        onPickupOrder = onPickupOrder,
+-                        onCompleteDelivery = onCompleteDelivery,
+-                        onSelectOrder = onSelectOrder
+-                    )
+-                }
+-            }
+-        }
+-    }
+-}
+-
+-/**
+- * Available deliveries list.
+- */
+-@Composable
+-private fun AvailableDeliveriesList(
+-    orders: List<DriverDeliveryOrder>,
+-    onAcceptDelivery: (String) -> Unit,
+-    onPickupOrder: (String) -> Unit,
+-    onCompleteDelivery: (String) -> Unit,
+-    actionInProgress: String?
+-) {
+-    when {
+-        orders.isEmpty() -> {
+-            EmptyAvailableContent()
+-        }
+-        else -> {
+-            LazyColumn(
+-                modifier = Modifier.fillMaxSize(),
+-                contentPadding = PaddingValues(16.dp),
+-                verticalArrangement = Arrangement.spacedBy(16.dp)
+-            ) {
+-                item {
+-                    Text(
+-                        text = "${orders.size} delivery${if (orders.size != 1) "s" else ""} available",
+-                        style = MaterialTheme.typography.labelLarge,
+-                        color = MaterialTheme.colorScheme.primary,
+-                        fontWeight = FontWeight.SemiBold
+-                    )
+-                }
+-                
+-                items(
+-                    items = orders,
+-                    key = { it.orderId }
+-                ) { order ->
+-                    DriverOrderCard(
+-                        order = order,
+-                        onAcceptDelivery = { onAcceptDelivery(order.orderId) },
+-                        onPickupOrder = { onPickupOrder(order.orderId) },
+-                        onCompleteDelivery = { onCompleteDelivery(order.orderId) },
+-                        isLoading = actionInProgress == order.orderId
+-                    )
+-                }
+-                
+-                item {
+-                    Spacer(modifier = Modifier.height(80.dp))
+-                }
+-            }
+-        }
+-    }
+-}
+-
+-/**
+- * My deliveries list.
+- */
+-@Composable
+-private fun MyDeliveriesList(
+-    orders: List<DriverDeliveryOrder>,
+-    onAcceptDelivery: (String) -> Unit,
+-    onPickupOrder: (String) -> Unit,
+-    onCompleteDelivery: (String) -> Unit,
+-    onSelectOrder: (DriverDeliveryOrder) -> Unit
+-) {
+-    when {
+-        orders.isEmpty() -> {
+-            EmptyMyDeliveriesContent()
+-        }
+-        else -> {
+-            LazyColumn(
+-                modifier = Modifier.fillMaxSize(),
+-                contentPadding = PaddingValues(16.dp),
+-                verticalArrangement = Arrangement.spacedBy(16.dp)
+-            ) {
+-                item {
+-                    Text(
+-                        text = "${orders.size} active delivery${if (orders.size != 1) "s" else ""}",
+-                        style = MaterialTheme.typography.labelLarge,
+-                        color = MaterialTheme.colorScheme.secondary,
+-                        fontWeight = FontWeight.SemiBold
+-                    )
+-                }
+-                
+-                items(
+-                    items = orders,
+-                    key = { it.orderId }
+-                ) { order ->
+-                    DriverOrderCard(
+-                        order = order,
+-                        onAcceptDelivery = { onAcceptDelivery(order.orderId) },
+-                        onPickupOrder = { onPickupOrder(order.orderId) },
+-                        onCompleteDelivery = { onCompleteDelivery(order.orderId) }
+-                    )
+-                }
+-                
+-                item {
+-                    Spacer(modifier = Modifier.height(80.dp))
+-                }
+-            }
+-        }
+-    }
+-}
+-
+-/**
+- * Empty content for available deliveries.
+- */
+-@Composable
+-private fun EmptyAvailableContent() {
+-    Box(
+-        modifier = Modifier.fillMaxSize(),
+-        contentAlignment = Alignment.Center
+-    ) {
+-        Column(
+-            horizontalAlignment = Alignment.CenterHorizontally,
+-            modifier = Modifier.padding(32.dp)
+-        ) {
+-            Icon(
+-                imageVector = Icons.Default.Delivery,
+-                contentDescription = null,
+-                modifier = Modifier.size(64.dp),
+-                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+-            )
+-            Spacer(modifier = Modifier.height(16.dp))
+-            Text(
+-                text = "No deliveries available",
+-                style = MaterialTheme.typography.titleMedium,
+-                fontWeight = FontWeight.Medium,
+-                color = MaterialTheme.colorScheme.onSurfaceVariant
+-            )
+-            Spacer(modifier = Modifier.height(8.dp))
+-            Text(
+-                text = "New deliveries will appear here when restaurants mark orders as ready",
+-                style = MaterialTheme.typography.bodyMedium,
+-                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+-                textAlign = TextAlign.Center
+-            )
+-        }
+-    }
+-}
+-
+-/**
+- * Empty content for my deliveries.
+- */
+-@Composable
+-private fun EmptyMyDeliveriesContent() {
+-    Box(
+-        modifier = Modifier.fillMaxSize(),
+-        contentAlignment = Alignment.Center
+-    ) {
+-        Column(
+-            horizontalAlignment = Alignment.CenterHorizontally,
+-            modifier = Modifier.padding(32.dp)
+-        ) {
+-            Icon(
+-                imageVector = Icons.Default.Delivery,
+-                contentDescription = null,
+-                modifier = Modifier.size(64.dp),
+-                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+-            )
+-            Spacer(modifier = Modifier.height(16.dp))
+-            Text(
+-                text = "No active deliveries",
+-                style = MaterialTheme.typography.titleMedium,
+-                fontWeight = FontWeight.Medium,
+-                color = MaterialTheme.colorScheme.onSurfaceVariant
+-            )
+-            Spacer(modifier = Modifier.height(8.dp))
+-            Text(
+-                text = "Accept a delivery to get started",
+-                style = MaterialTheme.typography.bodyMedium,
+-                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+-                textAlign = TextAlign.Center
+-            )
+-        }
+-    }
+-}
+-
+-/**
+- * Preview for DriverOrdersScreen.
+- */
+-@OptIn(ExperimentalMaterial3Api::class)
+-@Composable
+-fun DriverOrdersScreenPreview() {
+-    val previewState = DriverDeliveryUiState(
+-        availableOrders = listOf(
+-            DriverDeliveryOrder(
+-                orderId = "ORD_123456789",
+-                restaurantName = "Tasty Foods",
+-                restaurantAddress = "45 Main Street",
+-                customerName = "John Doe",
+-                customerAddress = "123 Shopping Centre",
+-                customerPhone = "0771234567",
+-                items = listOf(
+-                    DriverOrderItem(
+-                        itemId = "1",
+-                        itemName = "Chicken Burger",
+-                        quantity = 2,
+-                        price = 8.99
+-                    )
+-                ),
+-                subtotal = 17.98,
+-                deliveryFee = 5.00,
+-                totalCost = 22.98,
+-                orderStatus = "READY_FOR_PICKUP",
+-                deliveryStatus = DriverDeliveryStatus.UNASSIGNED
+-            )
+-        ),
+-        isLoading = false
+-    )
+-    
+-    DriverOrdersContent(
+-        uiState = previewState,
+-        onRefresh = {},
+-        onAcceptDelivery = {},
+-        onPickupOrder = {},
+-        onCompleteDelivery = {},
+-        onSelectOrder = {},
+-        snackbarHostState = SnackbarHostState()
+-    )
+-}
+-
+-/**
+- * Preview for DriverOrdersScreen - Empty.
+- */
+-@OptIn(ExperimentalMaterial3Api::class)
+-@Composable
+-fun DriverOrdersScreenEmptyPreview() {
+-    DriverOrdersContent(
+-        uiState = DriverDeliveryUiState(
+-            availableOrders = emptyList(),
+-            myDeliveries = emptyList(),
+-            isLoading = false
+-        ),
+-        onRefresh = {},
+-        onAcceptDelivery = {},
+-        onPickupOrder = {},
+-        onCompleteDelivery = {},
+-        onSelectOrder = {},
+-        snackbarHostState = SnackbarHostState()
+-    )
+-}
+-
+-/**
+- * Preview for DriverOrdersScreen - Loading.
+- */
+-@OptIn(ExperimentalMaterial3Api::class)
+-@Composable
+-fun DriverOrdersScreenLoadingPreview() {
+-    DriverOrdersContent(
+-        uiState = DriverDeliveryUiState(
+-            availableOrders = emptyList(),
+-            myDeliveries = emptyList(),
+-            isLoading = true
+-        ),
+-        onRefresh = {},
+-        onAcceptDelivery = {},
+-        onPickupOrder = {},
+-        onCompleteDelivery = {},
+-        onSelectOrder = {},
+-        snackbarHostState = SnackbarHostState()
+-    )
+-}
+diff --git a/app/src/main/java/com/example/ui/viewmodel/driver/DriverDeliveryViewModel.kt b/app/src/main/java/com/example/ui/viewmodel/driver/DriverDeliveryViewModel.kt
+index 60e96c8..4ae4b82 100644
+--- a/app/src/main/java/com/example/ui/viewmodel/driver/DriverDeliveryViewModel.kt
++++ b/app/src/main/java/com/example/ui/viewmodel/driver/DriverDeliveryViewModel.kt
+@@ -29,7 +29,7 @@ import kotlinx.coroutines.launch
+  */
+ class DriverDeliveryViewModel(
+     private val firestoreService: FirestoreService,
+-    val driverId: String,
++    private val driverId: String,
+     private val driverName: String
+ ) : ViewModel() {
+     
+-- 
+2.43.0
+

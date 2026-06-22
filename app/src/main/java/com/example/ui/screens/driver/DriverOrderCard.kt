@@ -1,5 +1,7 @@
 package com.example.ui.screens.driver
 
+import android.content.Intent
+import android.net.Uri
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -14,18 +16,22 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccessTime
 import androidx.compose.material.icons.filled.LocalPhone
 import androidx.compose.material.icons.filled.LocationOn
+import androidx.compose.material.icons.filled.Map
 import androidx.compose.material.icons.filled.Restaurant
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.example.ui.viewmodel.driver.DriverDeliveryOrder
@@ -183,15 +189,12 @@ private fun StatusBadge(status: DriverDeliveryStatus) {
     }
 }
 
-/**
- * Pickup location (restaurant).
- */
 @Composable
 private fun PickupLocation(order: DriverDeliveryOrder) {
+    val context = LocalContext.current
+
     Column {
-        Row(
-            verticalAlignment = Alignment.CenterVertically
-        ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
             Icon(
                 imageVector = Icons.Default.Restaurant,
                 contentDescription = null,
@@ -206,20 +209,18 @@ private fun PickupLocation(order: DriverDeliveryOrder) {
                 color = MaterialTheme.colorScheme.primary
             )
         }
-        
+
         Spacer(modifier = Modifier.height(4.dp))
-        
+
         Text(
             text = order.restaurantName,
             style = MaterialTheme.typography.bodyLarge,
             fontWeight = FontWeight.Medium
         )
-        
+
         Spacer(modifier = Modifier.height(2.dp))
-        
-        Row(
-            verticalAlignment = Alignment.CenterVertically
-        ) {
+
+        Row(verticalAlignment = Alignment.CenterVertically) {
             Icon(
                 imageVector = Icons.Default.LocationOn,
                 contentDescription = null,
@@ -233,12 +234,10 @@ private fun PickupLocation(order: DriverDeliveryOrder) {
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
-        
+
         if (order.restaurantPhone.isNotEmpty()) {
             Spacer(modifier = Modifier.height(2.dp))
-            Row(
-                verticalAlignment = Alignment.CenterVertically
-            ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(
                     imageVector = Icons.Default.LocalPhone,
                     contentDescription = null,
@@ -253,6 +252,31 @@ private fun PickupLocation(order: DriverDeliveryOrder) {
                 )
             }
         }
+
+        if (order.restaurantAddress.isNotBlank()) {
+            Spacer(modifier = Modifier.height(8.dp))
+            OutlinedButton(
+                onClick = {
+                    val uri = Uri.parse("geo:0,0?q=${Uri.encode(order.restaurantAddress)}")
+                    val mapIntent = Intent(Intent.ACTION_VIEW, uri)
+                    mapIntent.setPackage("com.google.android.apps.maps")
+                    if (mapIntent.resolveActivity(context.packageManager) != null) {
+                        context.startActivity(mapIntent)
+                    } else {
+                        val webUri = Uri.parse("https://maps.google.com/?q=${Uri.encode(order.restaurantAddress)}")
+                        context.startActivity(Intent(Intent.ACTION_VIEW, webUri))
+                    }
+                },
+                modifier = Modifier.fillMaxWidth(),
+                colors = ButtonDefaults.outlinedButtonColors(
+                    contentColor = MaterialTheme.colorScheme.primary
+                )
+            ) {
+                Icon(imageVector = Icons.Default.Map, contentDescription = null, modifier = Modifier.size(16.dp))
+                Spacer(modifier = Modifier.width(6.dp))
+                Text("Navigate to Restaurant")
+            }
+        }
     }
 }
 
@@ -261,10 +285,10 @@ private fun PickupLocation(order: DriverDeliveryOrder) {
  */
 @Composable
 private fun DeliveryLocation(order: DriverDeliveryOrder) {
+    val context = LocalContext.current
+
     Column {
-        Row(
-            verticalAlignment = Alignment.CenterVertically
-        ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
             Icon(
                 imageVector = Icons.Default.LocationOn,
                 contentDescription = null,
@@ -279,28 +303,26 @@ private fun DeliveryLocation(order: DriverDeliveryOrder) {
                 color = MaterialTheme.colorScheme.tertiary
             )
         }
-        
+
         Spacer(modifier = Modifier.height(4.dp))
-        
+
         Text(
             text = order.customerName,
             style = MaterialTheme.typography.bodyLarge,
             fontWeight = FontWeight.Medium
         )
-        
+
         Spacer(modifier = Modifier.height(2.dp))
-        
+
         Text(
             text = order.customerAddress,
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
-        
+
         if (order.customerPhone.isNotEmpty()) {
             Spacer(modifier = Modifier.height(2.dp))
-            Row(
-                verticalAlignment = Alignment.CenterVertically
-            ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(
                     imageVector = Icons.Default.LocalPhone,
                     contentDescription = null,
@@ -313,6 +335,33 @@ private fun DeliveryLocation(order: DriverDeliveryOrder) {
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
+            }
+        }
+
+        if (order.customerAddress.isNotBlank()) {
+            Spacer(modifier = Modifier.height(8.dp))
+            OutlinedButton(
+                onClick = {
+                    val uri = Uri.parse("geo:0,0?q=${Uri.encode(order.customerAddress)}")
+                    val mapIntent = Intent(Intent.ACTION_VIEW, uri)
+                    mapIntent.setPackage("com.google.android.apps.maps")
+                    if (mapIntent.resolveActivity(context.packageManager) != null) {
+                        context.startActivity(mapIntent)
+                    } else {
+                        // Fallback: open in browser maps
+                        val webUri = Uri.parse("https://maps.google.com/?q=${Uri.encode(order.customerAddress)}")
+                        context.startActivity(Intent(Intent.ACTION_VIEW, webUri))
+                    }
+                },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Map,
+                    contentDescription = null,
+                    modifier = Modifier.size(16.dp)
+                )
+                Spacer(modifier = Modifier.width(6.dp))
+                Text("Navigate to Customer")
             }
         }
     }
