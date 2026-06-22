@@ -2411,7 +2411,6 @@ fun AdminPortalOverlay(
             }
         }
     }
-    }
 
     // ADD RESTAURANT DIALOG
     if (showAddRestaurantDialog) {
@@ -3612,7 +3611,7 @@ fun RoleSelectionGate(
                     Button(
                         onClick = {
                             if (adminPinInput == "2026" || adminPinInput == "1980" || adminPinInput == "9999" || adminPinInput.trim().lowercase() == "admin") {
-                                viewModel.setProfile(UserProfile.Admin)
+                                viewModel.setProfile(UserProfile.Admin())
                                 adminPinInput = ""
                             } else {
                                 adminPinError = "Access Denied. Invalid Admin Passcode."
@@ -3971,7 +3970,7 @@ fun DriverDashboard(
 
     // Create driver delivery view model
     val driverViewModel = remember(driver.driverId) {
-        DriverDeliveryViewModel(FirestoreService(), driver.driverId, driver.driverName)
+        DriverDeliveryViewModel(FirestoreService(), driver.driverId.toString(), driver.driverName)
     }
 
     val claimableOrders = orderHistory.filter { (it.status == "READY_FOR_PICKUP" || it.status == "PREPARING") && it.driverId == null }

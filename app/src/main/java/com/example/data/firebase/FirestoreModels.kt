@@ -128,6 +128,8 @@ data class FirestoreOrder(
     val userId: String = "",
     val restaurantId: String = "",
     val restaurantName: String = "",
+    val restaurantAddress: String = "",
+    val restaurantPhone: String = "",
     val customerName: String = "",
     val customerAddress: String = "",
     val customerPhone: String = "",
@@ -168,7 +170,9 @@ data class FirestoreOrder(
 
 data class FirestoreOrderItem(
     val menuItemId: String = "",
+    val itemId: String = "",
     val name: String = "",
+    val itemName: String = "",
     val price: Double = 0.0,
     val quantity: Int = 1,
     val notes: String = ""

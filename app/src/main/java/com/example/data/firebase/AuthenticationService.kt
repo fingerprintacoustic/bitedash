@@ -145,8 +145,8 @@ class AuthenticationService {
                     callback.onVerificationCompleted(credential)
                 }
 
-                override fun onVerificationFailed(e: Exception) {
-                    callback.onVerificationFailed(mapAuthException(e as Exception))
+                override fun onVerificationFailed(e: com.google.firebase.FirebaseException) {
+                    callback.onVerificationFailed(mapAuthException(e))
                 }
 
                 override fun onCodeSent(

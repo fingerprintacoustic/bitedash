@@ -368,6 +368,21 @@ class FirestoreService {
             .map { snapshot -> snapshot.toObjects(FirestoreOrder::class.java) }
     }
 
+
+    fun getAvailableDeliveriesFlow(): Flow<List<FirestoreOrder>> {
+        return db.collection(COLLECTION_ORDERS)
+            .whereEqualTo("deliveryStatus", "UNASSIGNED")
+            .snapshots()
+            .map { snapshot -> snapshot.toObjects(FirestoreOrder::class.java) }
+    }
+
+    fun getDriverDeliveriesFlow(driverId: String): Flow<List<FirestoreOrder>> {
+        return db.collection(COLLECTION_ORDERS)
+            .whereEqualTo("driverId", driverId)
+            .snapshots()
+            .map { snapshot -> snapshot.toObjects(FirestoreOrder::class.java) }
+    }
+
     fun getDriverOrdersFlow(driverId: String): Flow<List<FirestoreOrder>> {
         return db.collection(COLLECTION_ORDERS)
             .whereEqualTo("driverId", driverId)

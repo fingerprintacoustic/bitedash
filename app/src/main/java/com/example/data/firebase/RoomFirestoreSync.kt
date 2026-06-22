@@ -323,7 +323,7 @@ class RoomFirestoreSync(
             displayOrder = displayOrder,
             ownerUsername = ownerUsername,
             ownerPassword = ownerPassword,
-            menuItems = menuItems.map { it.toFirestoreMenuItem() },
+            menuItemIds = menuItems.map { it.id },
             isActive = true
         )
     }
@@ -358,7 +358,7 @@ class RoomFirestoreSync(
             displayOrder = displayOrder,
             ownerUsername = ownerUsername,
             ownerPassword = ownerPassword,
-            menuItems = menuItems.map { it.toMenuItem() }
+            menuItems = emptyList()
         )
     }
 

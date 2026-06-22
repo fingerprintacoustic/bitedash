@@ -141,11 +141,11 @@ fun CheckoutContent(
             Button(
                 onClick = {
                     onInitiatePayment(
-                        amount = amount,
-                        userId = userId,
-                        orderId = orderId,
-                        phoneNumber = phoneNumber,
-                        description = "BiteDash Order $orderId"
+                        amount,
+                        userId,
+                        orderId,
+                        phoneNumber,
+                        "BiteDash Order $orderId"
                     )
                 },
                 modifier = Modifier.fillMaxWidth(),

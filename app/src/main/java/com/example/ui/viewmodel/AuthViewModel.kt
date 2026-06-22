@@ -274,7 +274,7 @@ class AuthViewModel(application: Application) : AndroidViewModel(application) {
             override fun onVerificationFailed(error: AuthResult) {
                 _isLoading.value = false
                 _authState.value = AuthState.Unauthenticated
-                _errorMessage.value = getUserFriendlyErrorMessage(error.code)
+                _errorMessage.value = getUserFriendlyErrorMessage((error as? com.example.data.firebase.AuthResult.Error)?.code ?: "ERROR_UNKNOWN")
             }
 
             override fun onCodeSent(verificationId: String, token: PhoneAuthProvider.ForceResendingToken) {
@@ -385,7 +385,7 @@ class AuthViewModel(application: Application) : AndroidViewModel(application) {
 
             override fun onVerificationFailed(error: AuthResult) {
                 _isLoading.value = false
-                _errorMessage.value = getUserFriendlyErrorMessage(error.code)
+                _errorMessage.value = getUserFriendlyErrorMessage((error as? com.example.data.firebase.AuthResult.Error)?.code ?: "ERROR_UNKNOWN")
             }
 
             override fun onCodeSent(verificationId: String, token: PhoneAuthProvider.ForceResendingToken) {
