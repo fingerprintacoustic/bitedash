@@ -2402,6 +2402,7 @@ fun AdminPortalOverlay(
                                 }
                             }
                         }
+                        }
                         3 -> {
                             // Paynow Credentials
                             PaynowSettingsTab(viewModel = viewModel)
@@ -4760,4 +4761,3 @@ private fun PaynowSettingsTab(viewModel: BiteDashViewModel) {
             }
         }
     }
-}
