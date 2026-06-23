@@ -2402,7 +2402,7 @@ fun AdminPortalOverlay(
                                 }
                             }
                         }
-                        }
+                        }}
                         3 -> {
                             // Paynow Credentials
                             PaynowSettingsTab(viewModel = viewModel)
