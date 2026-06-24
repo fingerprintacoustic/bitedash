@@ -5,6 +5,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.*
 import androidx.compose.runtime.collectAsState
@@ -12,7 +13,7 @@ import androidx.compose.ui.Modifier
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.ui.theme.MyApplicationTheme
 import com.example.ui.screens.BiteDashMainApp
-import com.example.ui.screens.AuthenticationGate
+import com.example.ui.screens.auth.AuthenticationGate
 import com.example.ui.screens.SplashScreen
 import com.example.ui.screens.AuthLoadingScreen
 import com.example.ui.viewmodel.AuthViewModel
@@ -48,7 +49,8 @@ class MainActivity : ComponentActivity() {
                 BiteDashMainApp(
                   viewModel = viewModel(),
                   authViewModel = authViewModel,
-                  userRole = userRole
+                  userRole = userRole,
+                  modifier = Modifier.padding(innerPadding)
                 )
               }
               is AuthState.Loading, is AuthState.OtpSent, is AuthState.OtpVerifying -> {
@@ -66,7 +68,8 @@ class MainActivity : ComponentActivity() {
                     BiteDashMainApp(
                       viewModel = viewModel(),
                       authViewModel = authViewModel,
-                      userRole = userRole
+                      userRole = userRole,
+                      modifier = Modifier.padding(innerPadding)
                     )
                   }
                 )

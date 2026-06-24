@@ -57,6 +57,7 @@ import com.example.ui.viewmodel.UserRole
 import com.example.ui.viewmodel.restaurant.RestaurantOrderViewModel
 import com.example.ui.viewmodel.driver.DriverDeliveryViewModel
 import com.example.data.firebase.FirestoreService
+import com.example.ui.screens.auth.AuthenticationGate
 import com.example.ui.screens.restaurant.RestaurantOrdersScreen
 import com.example.ui.screens.driver.DriverOrdersScreen
 import java.text.SimpleDateFormat
@@ -2402,7 +2403,7 @@ fun AdminPortalOverlay(
                                 }
                             }
                         }
-                        }}
+                        }
                         3 -> {
                             // Paynow Credentials
                             PaynowSettingsTab(viewModel = viewModel)

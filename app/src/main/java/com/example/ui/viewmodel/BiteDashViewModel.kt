@@ -51,7 +51,7 @@ sealed interface UserProfile {
         val firebaseUid: String = "" // Firebase Auth UID when authenticated
     ) : UserProfile
     
-    fun getFirebaseUid(): String? = when (this) {
+    fun getAuthUid(): String? = when (this) {
         is Idle -> null
         is Customer -> null
         is RestaurantOwner -> firebaseUid.takeIf { it.isNotEmpty() }
