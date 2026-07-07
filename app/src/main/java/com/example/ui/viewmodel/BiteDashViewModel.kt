@@ -1,6 +1,7 @@
 package com.example.ui.viewmodel
 
-import android.app.Application
+import android.app.Application 
+import com.example.BuildConfig
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.data.AppDatabase
@@ -233,21 +234,25 @@ class BiteDashViewModel(application: Application) : AndroidViewModel(application
             }
         }
 
-        // Seeding mock entries if database is pristine
-        viewModelScope.launch {
-            if (restaurantRepo.getCount() == 0) {
-                restaurantRepo.insertRestaurants(defaultRestaurants.map { it.toEntity() })
-            }
-            if (driverRepo.getCount() == 0) {
-                val seedDrivers = listOf(
-                    DriverEntity(name = "Tinashe", phone = "0771234567", vehicle = "Motorbike"),
-                    DriverEntity(name = "Chipo", phone = "0783214569", vehicle = "Bicycle"),
-                    DriverEntity(name = "Farai", phone = "0711556677", vehicle = "Honda Fit"),
-                    DriverEntity(name = "Nyasha", phone = "0734889900", vehicle = "Motorbike")
-                )
-                driverRepo.insertDrivers(seedDrivers)
-            }
+// Seeding mock entries if database is pristine — DEBUG builds only.
+// Production installs must start empty; real restaurants/drivers are
+// added via sign-up, not fake placeholder data.
+if (BuildConfig.DEBUG) {
+    viewModelScope.launch {
+        if (restaurantRepo.getCount() == 0) {
+            restaurantRepo.insertRestaurants(defaultRestaurants.map { it.toEntity() })
         }
+        if (driverRepo.getCount() == 0) {
+            val seedDrivers = listOf(
+                DriverEntity(name = "Tinashe", phone = "0771234567", vehicle = "Motorbike"),
+                DriverEntity(name = "Chipo", phone = "0783214569", vehicle = "Bicycle"),
+                DriverEntity(name = "Farai", phone = "0711556677", vehicle = "Honda Fit"),
+                DriverEntity(name = "Nyasha", phone = "0734889900", vehicle = "Motorbike")
+            )
+            driverRepo.insertDrivers(seedDrivers)
+        }
+    }
+}
 
         // Selected restaurant monitoring: auto-clear if it gets deleted by admin
         viewModelScope.launch {
