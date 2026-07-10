@@ -3073,11 +3073,15 @@ fun RoleSelectionGate(
         userRole
     }
 
-    var adminPinInput by remember { mutableStateOf("") }
-    var adminPinError by remember { mutableStateOf("") }
     var activeSelectionTab by remember { mutableStateOf(0) } // 0: Customer, 1: Restaurant, 2: Rider, 3: Admin
-    var logoTapCount by remember { mutableStateOf(0) }
-    val isAdminTabVisible = logoTapCount >= 5
+    // Admin tab is only ever shown to accounts whose Firestore `role` is
+    // actually "admin" — it used to be revealed by tapping the logo 5
+    // times, with access granted via a hardcoded passcode (2026/1980/9999/
+    // "admin"). Those were static, world-readable client-side secrets with
+    // no tie to the signed-in account, so any user could unlock the full
+    // Admin Control Hub (including Paynow credentials and payout
+    // settlement) regardless of their real role.
+    val isAdminTabVisible = currentUserRole == UserRole.ADMIN
     var showWebDashboardSimulator by remember { mutableStateOf(false) }
 
     // Owner Login details
@@ -3115,13 +3119,12 @@ fun RoleSelectionGate(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            // Logo containing hidden click gesture to reveal Admin tab (5 taps)
+            // Logo
             Box(
                 modifier = Modifier
                     .size(64.dp)
                     .clip(CircleShape)
-                    .background(MaterialTheme.colorScheme.primary)
-                    .clickable { logoTapCount++ },
+                    .background(MaterialTheme.colorScheme.primary),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
@@ -3584,41 +3587,20 @@ fun RoleSelectionGate(
                 }
                 3 -> {
                     // SYSTEM ADMIN PORTAL
+                    // Access is tied to the signed-in account's real
+                    // Firestore role (this tab is only visible at all when
+                    // currentUserRole == UserRole.ADMIN), enforced
+                    // server-side by firestore.rules' isAdmin() check —
+                    // not a client-side passcode.
                     Text(
-                        "Requires system passcode verification to access all features: viewing transaction reports, adding/approving/removing drivers, and approving/removing restaurants.",
+                        "Signed in as an Administrator. Continue to view transaction reports, manage drivers and restaurants, and configure payment settings.",
                         style = MaterialTheme.typography.bodySmall,
                         color = Color.Gray,
                         textAlign = TextAlign.Center
                     )
 
-                    OutlinedTextField(
-                        value = adminPinInput,
-                        onValueChange = {
-                            adminPinInput = it
-                            adminPinError = ""
-                        },
-                        placeholder = { Text("Enter Admin Passcode") },
-                        visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
-                        isError = adminPinError.isNotEmpty(),
-                        supportingText = {
-                            if (adminPinError.isNotEmpty()) {
-                                Text(adminPinError, color = MaterialTheme.colorScheme.error)
-                            }
-                        },
-                        modifier = Modifier.fillMaxWidth(),
-                        singleLine = true,
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
-                    )
-
                     Button(
-                        onClick = {
-                            if (adminPinInput == "2026" || adminPinInput == "1980" || adminPinInput == "9999" || adminPinInput.trim().lowercase() == "admin") {
-                                viewModel.setProfile(UserProfile.Admin())
-                                adminPinInput = ""
-                            } else {
-                                adminPinError = "Access Denied. Invalid Admin Passcode."
-                            }
-                        },
+                        onClick = { viewModel.setProfile(UserProfile.Admin()) },
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(12.dp)
                     ) {
