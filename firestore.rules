@@ -142,8 +142,8 @@ service cloud.firestore {
       allow read: if isAuthenticated() && 
         exists(/databases/$(database)/documents/orders/$(resource.data.orderId)) &&
         get(/databases/$(database)/documents/orders/$(resource.data.orderId)).data.restaurantId != null &&
-        exists(/databases/$(database)/documents/restaurants/(get(/databases/$(database)/documents/orders/$(resource.data.orderId)).data.restaurantId)) &&
-        get(/databases/$(database)/documents/restaurants/(get(/databases/$(database)/documents/orders/$(resource.data.orderId)).data.restaurantId)).data.ownerUserId == request.auth.uid;
+        exists(/databases/$(database)/documents/restaurants/$(get(/databases/$(database)/documents/orders/$(resource.data.orderId)).data.restaurantId)) &&
+        get(/databases/$(database)/documents/restaurants/$(get(/databases/$(database)/documents/orders/$(resource.data.orderId)).data.restaurantId)).data.ownerUserId == request.auth.uid;
       
       // Drivers can read payments for their deliveries
       allow read: if isAuthenticated() &&
