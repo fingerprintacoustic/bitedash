@@ -712,8 +712,8 @@ if (BuildConfig.DEBUG) {
             val current = firestoreService.getAdminSettings() ?: FirestoreAdminSettings()
             firestoreService.updateAdminSettings(
                 current.copy(
-                    ecoCashMerchantId = integrationId.trim(),
-                    innBucksApiKey = integrationKey.trim()
+                    paynowIntegrationId = integrationId.trim(),
+                    paynowIntegrationKey = integrationKey.trim()
                 )
             )
         }

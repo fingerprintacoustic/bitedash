@@ -305,7 +305,9 @@ fun SignupScreen(
                     shape = RoundedCornerShape(12.dp)
                 ) {
                     Column(modifier = Modifier.padding(8.dp)) {
-                        UserRole.entries.forEach { role ->
+                        // Admin is never offered as a self-serve sign-up option;
+                        // admin access must be granted by an existing admin.
+                        UserRole.entries.filter { it != UserRole.ADMIN }.forEach { role ->
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()

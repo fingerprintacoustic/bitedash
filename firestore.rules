@@ -10,8 +10,14 @@ service cloud.firestore {
     }
     
     // Check if user is an admin
+    // Looks up the caller's own user document and checks their role field.
+    // (Previously compared uid to the literal string 'admin', which could
+    // never match a real Firebase Auth UID — this made isAdmin() always
+    // false and silently fell through to the more permissive per-resource
+    // rules below.)
     function isAdmin() {
-      return isAuthenticated() && request.auth.uid == 'admin';
+      return isAuthenticated() &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
     }
     
     // ==================== USERS ====================
@@ -20,8 +26,11 @@ service cloud.firestore {
       // Users can read their own profile
       allow read: if isAuthenticated() && request.auth.uid == userId;
       
-      // Users can create their own profile
-      allow create: if isAuthenticated() && request.auth.uid == userId;
+      // Users can create their own profile, but cannot self-assign the
+      // admin role (admin must be granted by an existing admin via the
+      // "Admin can manage all user profiles" rule below).
+      allow create: if isAuthenticated() && request.auth.uid == userId &&
+        request.resource.data.role != 'admin';
       
       // Users can update their own profile (except role)
       allow update: if isAuthenticated() && request.auth.uid == userId &&

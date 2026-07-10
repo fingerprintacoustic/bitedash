@@ -274,6 +274,8 @@ data class FirestoreAdminSettings(
     val ecoCashMerchantId: String = "",
     val oneMoneyMerchantId: String = "",
     val innBucksApiKey: String = "",
+    val paynowIntegrationId: String = "",
+    val paynowIntegrationKey: String = "",
     val isPayoutAutomationEnabled: Boolean = false,
     @ServerTimestamp
     val updatedAt: Timestamp? = null
