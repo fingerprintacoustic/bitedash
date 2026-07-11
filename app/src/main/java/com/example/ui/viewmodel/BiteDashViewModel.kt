@@ -200,6 +200,87 @@ class BiteDashViewModel(application: Application) : AndroidViewModel(application
     private val _isPayoutInProgress = MutableStateFlow(false)
     val isPayoutInProgress: StateFlow<Boolean> = _isPayoutInProgress.asStateFlow()
 
+    data class RestaurantPayoutSummary(
+        val restaurantId: String,
+        val restaurantName: String,
+        val amountOwed: Double,
+        val orderCount: Int
+    )
+
+    data class DriverPayoutSummary(
+        val driverId: String,
+        val driverName: String,
+        val amountOwed: Double,
+        val orderCount: Int
+    )
+
+    private val _restaurantPayouts = MutableStateFlow<List<RestaurantPayoutSummary>>(emptyList())
+    val restaurantPayouts: StateFlow<List<RestaurantPayoutSummary>> = _restaurantPayouts.asStateFlow()
+
+    private val _driverPayouts = MutableStateFlow<List<DriverPayoutSummary>>(emptyList())
+    val driverPayouts: StateFlow<List<DriverPayoutSummary>> = _driverPayouts.asStateFlow()
+
+    private val _isLoadingPayoutSummary = MutableStateFlow(false)
+    val isLoadingPayoutSummary: StateFlow<Boolean> = _isLoadingPayoutSummary.asStateFlow()
+
+    private val _settlingIds = MutableStateFlow<Set<String>>(emptySet())
+    val settlingIds: StateFlow<Set<String>> = _settlingIds.asStateFlow()
+
+    fun loadPayoutSummary() {
+        viewModelScope.launch {
+            _isLoadingPayoutSummary.value = true
+            val firestoreService = FirestoreService()
+            val unsettled = firestoreService.getUnsettledCompletedOrders()
+
+            _restaurantPayouts.value = unsettled
+                .groupBy { it.restaurantId to it.restaurantName }
+                .map { (key, orders) ->
+                    RestaurantPayoutSummary(
+                        restaurantId = key.first,
+                        restaurantName = key.second,
+                        amountOwed = orders.sumOf { it.restaurantPayoutAmount },
+                        orderCount = orders.size
+                    )
+                }
+                .sortedByDescending { it.amountOwed }
+
+            _driverPayouts.value = unsettled
+                .filter { !it.driverId.isNullOrBlank() }
+                .groupBy { (it.driverId ?: "") to (it.driverName ?: "Unknown Driver") }
+                .map { (key, orders) ->
+                    DriverPayoutSummary(
+                        driverId = key.first,
+                        driverName = key.second,
+                        amountOwed = orders.sumOf { it.driverPayoutAmount },
+                        orderCount = orders.size
+                    )
+                }
+                .sortedByDescending { it.amountOwed }
+
+            _isLoadingPayoutSummary.value = false
+        }
+    }
+
+    fun markRestaurantPaid(restaurantId: String) {
+        viewModelScope.launch {
+            _settlingIds.value = _settlingIds.value + restaurantId
+            val firestoreService = FirestoreService()
+            firestoreService.settleRestaurantPayout(restaurantId)
+            loadPayoutSummary()
+            _settlingIds.value = _settlingIds.value - restaurantId
+        }
+    }
+
+    fun markDriverPaid(driverId: String) {
+        viewModelScope.launch {
+            _settlingIds.value = _settlingIds.value + driverId
+            val firestoreService = FirestoreService()
+            firestoreService.settleDriverPayout(driverId)
+            loadPayoutSummary()
+            _settlingIds.value = _settlingIds.value - driverId
+        }
+    }
+
     // Dynamic states backed by DB
     private val _restaurantsState = MutableStateFlow<List<Restaurant>>(emptyList())
     val restaurantsState: StateFlow<List<Restaurant>> = _restaurantsState.asStateFlow()
