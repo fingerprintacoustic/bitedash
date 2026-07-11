@@ -2020,6 +2020,15 @@ fun AdminPortalOverlay(
                         text = { Text("Paynow", fontSize = 13.sp) },
                         modifier = Modifier.testTag("admin_tab_paynow")
                     )
+                    Tab(
+                        selected = activeSubTab == 4,
+                        onClick = {
+                            activeSubTab = 4
+                            viewModel.loadPayoutSummary()
+                        },
+                        text = { Text("Payouts", fontSize = 13.sp) },
+                        modifier = Modifier.testTag("admin_tab_payouts")
+                    )
                 }
 
                 Spacer(modifier = Modifier.height(12.dp))
@@ -2407,6 +2416,10 @@ fun AdminPortalOverlay(
                         3 -> {
                             // Paynow Credentials
                             PaynowSettingsTab(viewModel = viewModel)
+                        }
+                        4 -> {
+                            // Payouts Summary
+                            PayoutsSummaryTab(viewModel = viewModel)
                         }
                     }
                 }
@@ -4744,4 +4757,123 @@ private fun PaynowSettingsTab(viewModel: BiteDashViewModel) {
         }
     }
 
+}
+
+@Composable
+private fun PayoutsSummaryTab(viewModel: BiteDashViewModel) {
+    val restaurantPayouts by viewModel.restaurantPayouts.collectAsStateWithLifecycle()
+    val driverPayouts by viewModel.driverPayouts.collectAsStateWithLifecycle()
+    val isLoading by viewModel.isLoadingPayoutSummary.collectAsStateWithLifecycle()
+    val settlingIds by viewModel.settlingIds.collectAsStateWithLifecycle()
+
+    val totalOwed = restaurantPayouts.sumOf { it.amountOwed } + driverPayouts.sumOf { it.amountOwed }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(vertical = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        Text(
+            "Money already sits in your Paynow account. After you manually pay a restaurant or driver, tap 'Mark Paid' on their row.",
+            fontSize = 12.sp,
+            color = Color.Gray
+        )
+
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
+        ) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Text("Total Still Owed", fontSize = 12.sp)
+                Text(
+                    "$${String.format(Locale.US, "%.2f", totalOwed)}",
+                    fontSize = 24.sp,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+        }
+
+        if (isLoading) {
+            Box(modifier = Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) {
+                CircularProgressIndicator()
+            }
+        } else {
+            Text("Restaurants Owed", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+            if (restaurantPayouts.isEmpty()) {
+                Text("Nothing owed to restaurants right now.", fontSize = 12.sp, color = Color.Gray)
+            } else {
+                restaurantPayouts.forEach { r ->
+                    val isSettling = settlingIds.contains(r.restaurantId)
+                    Card(modifier = Modifier.fillMaxWidth()) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(12.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(r.restaurantName, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+                                Text("${r.orderCount} orders", fontSize = 11.sp, color = Color.Gray)
+                                Text(
+                                    "$${String.format(Locale.US, "%.2f", r.amountOwed)}",
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 14.sp
+                                )
+                            }
+                            Button(
+                                onClick = { viewModel.markRestaurantPaid(r.restaurantId) },
+                                enabled = !isSettling,
+                                modifier = Modifier.height(36.dp)
+                            ) {
+                                if (isSettling) {
+                                    CircularProgressIndicator(modifier = Modifier.size(14.dp), color = Color.White, strokeWidth = 2.dp)
+                                } else {
+                                    Text("Mark Paid", fontSize = 12.sp)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(4.dp))
+            Text("Drivers Owed", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+            if (driverPayouts.isEmpty()) {
+                Text("Nothing owed to drivers right now.", fontSize = 12.sp, color = Color.Gray)
+            } else {
+                driverPayouts.forEach { d ->
+                    val isSettling = settlingIds.contains(d.driverId)
+                    Card(modifier = Modifier.fillMaxWidth()) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(12.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(d.driverName, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+                                Text("${d.orderCount} orders", fontSize = 11.sp, color = Color.Gray)
+                                Text(
+                                    "$${String.format(Locale.US, "%.2f", d.amountOwed)}",
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 14.sp
+                                )
+                            }
+                            Button(
+                                onClick = { viewModel.markDriverPaid(d.driverId) },
+                                enabled = !isSettling,
+                                modifier = Modifier.height(36.dp)
+                            ) {
+                                if (isSettling) {
+                                    CircularProgressIndicator(modifier = Modifier.size(14.dp), color = Color.White, strokeWidth = 2.dp)
+                                } else {
+                                    Text("Mark Paid", fontSize = 12.sp)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
