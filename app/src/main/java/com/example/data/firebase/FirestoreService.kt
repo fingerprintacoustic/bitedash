@@ -443,6 +443,24 @@ class FirestoreService {
                 updates["acceptedAt"] = Timestamp.now()
             } else if (status == "COMPLETED") {
                 updates["completedAt"] = Timestamp.now()
+
+                // Calculate payouts now that the order is fulfilled.
+                // Restaurant keeps (subtotal - platform commission).
+                // Driver keeps the full delivery fee plus any tip.
+                // Admin's platformFeePercent is configurable in Admin Settings (default 10%).
+                val order = getOrder(orderId)
+                if (order != null) {
+                    val settings = getAdminSettings()
+                    val feePercent = settings?.platformFeePercent ?: 10.0
+                    val platformFee = order.subtotal * (feePercent / 100.0)
+                    val restaurantPayout = order.subtotal - platformFee
+                    val driverPayout = order.deliveryFee + order.driverTip
+
+                    updates["platformFee"] = platformFee
+                    updates["restaurantPayoutAmount"] = restaurantPayout
+                    updates["driverPayoutAmount"] = driverPayout
+                    updates["isSettled"] = false
+                }
             }
             db.collection(COLLECTION_ORDERS)
                 .document(orderId)
@@ -704,6 +722,73 @@ class FirestoreService {
     }
 
     // ==================== BATCH OPERATIONS ====================
+
+    suspend fun getUnsettledCompletedOrders(): List<FirestoreOrder> {
+        return try {
+            db.collection(COLLECTION_ORDERS)
+                .whereEqualTo("status", "COMPLETED")
+                .whereEqualTo("isSettled", false)
+                .get()
+                .await()
+                .toObjects(FirestoreOrder::class.java)
+        } catch (e: Exception) {
+            emptyList()
+        }
+    }
+
+    suspend fun settleRestaurantPayout(restaurantId: String): Int {
+        return try {
+            val orders = db.collection(COLLECTION_ORDERS)
+                .whereEqualTo("status", "COMPLETED")
+                .whereEqualTo("isSettled", false)
+                .whereEqualTo("restaurantId", restaurantId)
+                .get()
+                .await()
+
+            var count = 0
+            for (document in orders) {
+                document.reference.update("restaurantSettled", true)
+                maybeFullySettle(document.reference)
+                count++
+            }
+            count
+        } catch (e: Exception) {
+            0
+        }
+    }
+
+    suspend fun settleDriverPayout(driverId: String): Int {
+        return try {
+            val orders = db.collection(COLLECTION_ORDERS)
+                .whereEqualTo("status", "COMPLETED")
+                .whereEqualTo("isSettled", false)
+                .whereEqualTo("driverId", driverId)
+                .get()
+                .await()
+
+            var count = 0
+            for (document in orders) {
+                document.reference.update("driverSettled", true)
+                maybeFullySettle(document.reference)
+                count++
+            }
+            count
+        } catch (e: Exception) {
+            0
+        }
+    }
+
+    private suspend fun maybeFullySettle(docRef: com.google.firebase.firestore.DocumentReference) {
+        val snapshot = docRef.get().await()
+        val restaurantSettled = snapshot.getBoolean("restaurantSettled") ?: false
+        val driverSettled = snapshot.getBoolean("driverSettled") ?: false
+        val hasDriver = !snapshot.getString("driverId").isNullOrBlank()
+        // An order is fully settled once its restaurant portion is paid,
+        // and its driver portion is paid too (if the order even had a driver).
+        if (restaurantSettled && (driverSettled || !hasDriver)) {
+            docRef.update("isSettled", true)
+        }
+    }
 
     suspend fun settleCompletedOrders(): Int {
         return try {
