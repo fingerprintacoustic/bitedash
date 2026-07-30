@@ -21,7 +21,6 @@ object CountryCodes {
         CountryCode("Namibia", "\uD83C\uDDF3\uD83C\uDDE6", "+264"),
         CountryCode("Malawi", "\uD83C\uDDF2\uD83C\uDDFC", "+265"),
         CountryCode("Kenya", "\uD83C\uDDF0\uD83C\uDDEA", "+254"),
-        CountryCode("Nigeria", "\uD83C\uDDF3\uD83C\uDDEC", "+234"),
         CountryCode("Ghana", "\uD83C\uDDEC\uD83C\uDDED", "+233"),
         CountryCode("United States", "\uD83C\uDDFA\uD83C\uDDF8", "+1"),
         CountryCode("Canada", "\uD83C\uDDE8\uD83C\uDDE6", "+1"),
@@ -31,7 +30,6 @@ object CountryCodes {
         CountryCode("Germany", "\uD83C\uDDE9\uD83C\uDDEA", "+49"),
         CountryCode("United Arab Emirates", "\uD83C\uDDE6\uD83C\uDDEA", "+971"),
         CountryCode("China", "\uD83C\uDDE8\uD83C\uDDF3", "+86"),
-        CountryCode("India", "\uD83C\uDDEE\uD83C\uDDF3", "+91"),
     )
 
     val default: CountryCode = all.first() // Zimbabwe
