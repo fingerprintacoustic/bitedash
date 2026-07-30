@@ -9,7 +9,10 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material.icons.outlined.AdminPanelSettings
@@ -44,13 +47,26 @@ fun PhoneLoginScreen(
     onNavigateBack: () -> Unit,
     onNavigateToSignUp: () -> Unit
 ) {
-    val phone by authViewModel.phone.collectAsStateWithLifecycle()
     val displayName by authViewModel.displayName.collectAsStateWithLifecycle()
     val selectedRole by authViewModel.selectedRole.collectAsStateWithLifecycle()
     val isLoading by authViewModel.isLoading.collectAsStateWithLifecycle()
     val errorMessage by authViewModel.errorMessage.collectAsStateWithLifecycle()
 
     var showRoleSelector by remember { mutableStateOf(false) }
+    var selectedCountry by remember { mutableStateOf(CountryCodes.default) }
+    var localNumber by remember { mutableStateOf("") }
+    var showCountryPicker by remember { mutableStateOf(false) }
+
+    // Keep the ViewModel's phone value in sync with the country code +
+    // local digits, so the rest of the auth flow always sees a full
+    // E.164-style number (e.g. "+15551234567") rather than just local digits.
+    // A leading 0 in the local number (e.g. "0771234567", the domestic
+    // dialing format) is dropped, since it shouldn't appear after the
+    // country code in international format.
+    LaunchedEffect(selectedCountry, localNumber) {
+        val nationalNumber = localNumber.removePrefix("0")
+        authViewModel.updatePhone(selectedCountry.dialCode + nationalNumber)
+    }
 
     Box(
         modifier = Modifier
@@ -107,7 +123,7 @@ fun PhoneLoginScreen(
             )
 
             Text(
-                text = "Enter your Zimbabwe phone number (+263)",
+                text = "Select your country and enter your phone number",
                 style = MaterialTheme.typography.bodyMedium,
                 color = Color.Gray
             )
@@ -148,18 +164,32 @@ fun PhoneLoginScreen(
                 }
             }
 
-            // Phone field with Zimbabwe prefix
+            // Phone field with tappable country code picker
             OutlinedTextField(
-                value = phone,
-                onValueChange = { authViewModel.updatePhone(it) },
+                value = localNumber,
+                onValueChange = { input -> localNumber = input.filter { it.isDigit() } },
                 label = { Text("Phone Number") },
-                placeholder = { Text("077 123 4567") },
+                placeholder = { Text("77 123 4567") },
                 leadingIcon = {
-                    Text(
-                        text = "+263",
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = MaterialTheme.colorScheme.primary
-                    )
+                    Row(
+                        modifier = Modifier
+                            .clickable { showCountryPicker = true }
+                            .padding(start = 12.dp, end = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(text = selectedCountry.flagEmoji, style = MaterialTheme.typography.bodyLarge)
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = selectedCountry.dialCode,
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                        Icon(
+                            imageVector = Icons.Default.ArrowDropDown,
+                            contentDescription = "Choose country code",
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                    }
                 },
                 modifier = Modifier.fillMaxWidth(),
                 keyboardOptions = KeyboardOptions(
@@ -169,6 +199,39 @@ fun PhoneLoginScreen(
                 singleLine = true,
                 shape = RoundedCornerShape(12.dp)
             )
+
+            if (showCountryPicker) {
+                AlertDialog(
+                    onDismissRequest = { showCountryPicker = false },
+                    title = { Text("Select country") },
+                    text = {
+                        LazyColumn(modifier = Modifier.fillMaxWidth()) {
+                            items(CountryCodes.all) { country ->
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable {
+                                            selectedCountry = country
+                                            showCountryPicker = false
+                                        }
+                                        .padding(vertical = 12.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(text = country.flagEmoji, style = MaterialTheme.typography.bodyLarge)
+                                    Spacer(modifier = Modifier.width(12.dp))
+                                    Text(text = country.name, modifier = Modifier.weight(1f))
+                                    Text(text = country.dialCode, color = Color.Gray)
+                                }
+                            }
+                        }
+                    },
+                    confirmButton = {
+                        TextButton(onClick = { showCountryPicker = false }) {
+                            Text("Cancel")
+                        }
+                    }
+                )
+            }
 
             Spacer(modifier = Modifier.height(16.dp))
 
