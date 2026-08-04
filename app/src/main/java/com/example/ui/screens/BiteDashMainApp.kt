@@ -21,6 +21,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.geometry.Offset
@@ -477,7 +478,7 @@ fun RestaurantCard(restaurant: Restaurant, onClick: () -> Unit) {
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick)
+            .then(if (restaurant.isApproved) Modifier.clickable(onClick = onClick) else Modifier)
             .testTag("restaurant_card_${restaurant.id}"),
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(
@@ -485,7 +486,9 @@ fun RestaurantCard(restaurant: Restaurant, onClick: () -> Unit) {
         ),
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
-        Column {
+        Column(
+            modifier = if (restaurant.isApproved) Modifier else Modifier.alpha(0.55f)
+        ) {
             // Mock Banner
             Box(
                 modifier = Modifier
@@ -507,7 +510,7 @@ fun RestaurantCard(restaurant: Restaurant, onClick: () -> Unit) {
                         contentColor = Color.White
                     ) {
                         Text(
-                            text = restaurant.category,
+                            text = if (restaurant.isApproved) restaurant.category else "Coming Soon",
                             modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
                         )
                     }
@@ -2081,7 +2084,14 @@ fun AdminPortalOverlay(
                                                     verticalAlignment = Alignment.CenterVertically
                                                 ) {
                                                     Column(modifier = Modifier.weight(1f)) {
-                                                        Text(rest.name, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium)
+                                                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                                            Text(rest.name, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium)
+                                                            if (!rest.isApproved) {
+                                                                Badge(containerColor = Color(0xFFF59E0B), contentColor = Color.White) {
+                                                                    Text("Pending", modifier = Modifier.padding(horizontal = 6.dp, vertical = 1.dp), fontSize = 9.sp)
+                                                                }
+                                                            }
+                                                        }
                                                         Text("${rest.category} • ${rest.location}", fontSize = 12.sp, color = Color.Gray)
                                                         Text("Delivery: $${String.format(Locale.US, "%.2f", rest.deliveryFee)} • ${rest.menuItems.size} items", fontSize = 11.sp, color = MaterialTheme.colorScheme.primary)
                                                     }
@@ -2089,6 +2099,18 @@ fun AdminPortalOverlay(
                                                         verticalAlignment = Alignment.CenterVertically,
                                                         horizontalArrangement = Arrangement.spacedBy(4.dp)
                                                     ) {
+                                                        if (!rest.isApproved) {
+                                                            IconButton(
+                                                                onClick = { viewModel.approveRestaurant(rest.id) },
+                                                                modifier = Modifier.testTag("approve_rest_${rest.id}")
+                                                            ) {
+                                                                Icon(
+                                                                    imageVector = Icons.Default.Check,
+                                                                    contentDescription = "Approve Restaurant",
+                                                                    tint = Color(0xFF16A34A)
+                                                                )
+                                                            }
+                                                        }
                                                         IconButton(
                                                             onClick = { viewModel.moveRestaurantUp(rest) },
                                                             modifier = Modifier.testTag("move_up_${rest.id}")
@@ -2435,8 +2457,6 @@ fun AdminPortalOverlay(
         var restCat by remember { mutableStateOf("Fast Food") }
         var restFee by remember { mutableStateOf("2.00") }
         var restTime by remember { mutableStateOf("20-30 min") }
-        var restOwnerUsername by remember { mutableStateOf("owner") }
-        var restOwnerPassword by remember { mutableStateOf("password") }
         
         // Menu Items builder inside brand dialog
         var itemName by remember { mutableStateOf("") }
@@ -2494,24 +2514,11 @@ fun AdminPortalOverlay(
                     }
 
                     item {
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            OutlinedTextField(
-                                value = restOwnerUsername,
-                                onValueChange = { restOwnerUsername = it },
-                                label = { Text("Owner Login ID") },
-                                placeholder = { Text("e.g. owner") },
-                                modifier = Modifier.weight(1f),
-                                singleLine = true
-                            )
-                            OutlinedTextField(
-                                value = restOwnerPassword,
-                                onValueChange = { restOwnerPassword = it },
-                                label = { Text("Owner Password") },
-                                placeholder = { Text("password") },
-                                modifier = Modifier.weight(1f),
-                                singleLine = true
-                            )
-                        }
+                        Text(
+                            "Restaurant owners now sign in with their own account and link to this listing automatically — no separate owner credentials needed here.",
+                            fontSize = 10.sp,
+                            color = Color.Gray
+                        )
                     }
 
                     item {
@@ -2669,9 +2676,7 @@ fun AdminPortalOverlay(
                                                     "Pizza & Grills" -> "pizza"
                                                     "Cafes & Drinks" -> "cafe"
                                                     else -> "chicken"
-                                                },
-                                                ownerUsername = restOwnerUsername.ifBlank { "owner" },
-                                                ownerPassword = restOwnerPassword.ifBlank { "password" }
+                                                }
                                             )
                                         )
                                         showAddRestaurantDialog = false
@@ -3097,23 +3102,6 @@ fun RoleSelectionGate(
     val isAdminTabVisible = currentUserRole == UserRole.ADMIN
     var showWebDashboardSimulator by remember { mutableStateOf(false) }
 
-    // Owner Login details
-    var ownerLoginUsername by remember { mutableStateOf("") }
-    var ownerLoginPassword by remember { mutableStateOf("") }
-    var ownerLoginError by remember { mutableStateOf("") }
-    var showOwnerSignupForm by remember { mutableStateOf(false) }
-    
-    // Multi ownership intermediate selection
-    var selectedMatchingRests by remember { mutableStateOf<List<com.example.model.Restaurant>?>(null) }
-
-    // Signup specific fields
-    var ownerSignupName by remember { mutableStateOf("") }
-    var ownerSignupDesc by remember { mutableStateOf("") }
-    var ownerSignupLoc by remember { mutableStateOf("Belgravia, Harare") }
-    var ownerSignupCat by remember { mutableStateOf("Fast Food") }
-    var ownerSignupUsername by remember { mutableStateOf("") }
-    var ownerSignupPassword by remember { mutableStateOf("") }
-    var ownerSignupError by remember { mutableStateOf("") }
 
     Box(
         modifier = Modifier
@@ -3251,310 +3239,164 @@ fun RoleSelectionGate(
                 }
                 1 -> {
                     // RESTAURANT OWNER PORTAL
-                    if (selectedMatchingRests != null) {
-                        // MULTI-OWNERSHIP SELECTOR HUB
-                        val matching = selectedMatchingRests!!
-                        Text(
-                            text = "Multiple Kitchen Hubs Detected",
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.primary,
-                            style = MaterialTheme.typography.titleMedium
-                        )
-                        Text(
-                            text = "Your owner credentials (${ownerLoginUsername}) are linked. You can manage the following registered brands. Select kitchen node:",
-                            fontSize = 11.sp,
-                            color = Color.Gray,
-                            textAlign = TextAlign.Center
-                        )
+                    // Tied to the signed-in account's real Firestore role
+                    // and Firebase UID via ownerUserId — not a separate
+                    // plaintext username/password system. That old system
+                    // defaulted every restaurant to login "owner" /
+                    // "password", which was a real backdoor into any
+                    // restaurant's owner dashboard for anyone who knew it.
+                    val currentUid = authViewModel?.getCurrentUserId()
+                    val myRestaurant = restaurants.find { it.ownerUserId == currentUid && !currentUid.isNullOrBlank() }
 
-                        LazyColumn(
-                            modifier = Modifier.heightIn(max = 220.dp),
-                            verticalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            items(matching) { rest ->
-                                ElevatedCard(
-                                    onClick = { 
-                                        viewModel.setProfile(UserProfile.RestaurantOwner(rest.id, rest.name))
-                                    },
-                                    modifier = Modifier.fillMaxWidth()
+                    when {
+                        currentUserRole != UserRole.RESTAURANT -> {
+                            Text(
+                                text = "Restaurant Portal",
+                                fontWeight = FontWeight.Bold,
+                                style = MaterialTheme.typography.titleMedium,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                            Text(
+                                text = "This section is for registered restaurant accounts. Sign up with the Restaurant role (or ask an admin to switch your account) to get started.",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = Color.Gray,
+                                textAlign = TextAlign.Center
+                            )
+                        }
+                        myRestaurant != null -> {
+                            // Already linked to a restaurant — jump straight into their dashboard.
+                            LaunchedEffect(myRestaurant.id) {
+                                viewModel.setProfile(UserProfile.RestaurantOwner(myRestaurant.id, myRestaurant.name, currentUid ?: ""))
+                            }
+                            CircularProgressIndicator()
+                        }
+                        else -> {
+                            // First time here as a restaurant-role account — set up their restaurant.
+                            var setupName by remember { mutableStateOf("") }
+                            var setupDesc by remember { mutableStateOf("") }
+                            var setupLoc by remember { mutableStateOf("") }
+                            var setupCat by remember { mutableStateOf("Fast Food") }
+                            var setupFee by remember { mutableStateOf("2.00") }
+                            var setupTime by remember { mutableStateOf("20-30 min") }
+                            var setupError by remember { mutableStateOf("") }
+
+                            Text(
+                                text = "Set Up Your Restaurant",
+                                fontWeight = FontWeight.Bold,
+                                style = MaterialTheme.typography.titleMedium,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                            Text(
+                                text = "You're signed in as a restaurant account — let's create your listing. You can add menu items afterward from your dashboard.",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = Color.Gray,
+                                textAlign = TextAlign.Center
+                            )
+
+                            Column(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                                OutlinedTextField(
+                                    value = setupName,
+                                    onValueChange = { setupName = it },
+                                    label = { Text("Restaurant Name") },
+                                    placeholder = { Text("e.g. Simba Grills") },
+                                    modifier = Modifier.fillMaxWidth().testTag("restaurant_setup_name"),
+                                    singleLine = true
+                                )
+
+                                OutlinedTextField(
+                                    value = setupDesc,
+                                    onValueChange = { setupDesc = it },
+                                    label = { Text("Short Description") },
+                                    placeholder = { Text("Traditional flame-kissed Zimbabwean meats.") },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    singleLine = true
+                                )
+
+                                OutlinedTextField(
+                                    value = setupLoc,
+                                    onValueChange = { setupLoc = it },
+                                    label = { Text("Location") },
+                                    placeholder = { Text("Eastlea, Harare") },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    singleLine = true
+                                )
+
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
                                 ) {
-                                    Row(
-                                        modifier = Modifier.padding(14.dp),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Column(modifier = Modifier.weight(1f)) {
-                                            Text(rest.name, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium)
-                                            Text(rest.location, style = MaterialTheme.typography.labelSmall, color = Color.Gray)
-                                            Text("Category: ${rest.category}", fontSize = 9.sp, color = MaterialTheme.colorScheme.primary)
+                                    listOf("Fast Food", "Traditional", "Pizza & Grills", "Cafes & Drinks").forEach { cat ->
+                                        val isSel = setupCat == cat
+                                        Box(
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .clip(RoundedCornerShape(8.dp))
+                                                .background(if (isSel) MaterialTheme.colorScheme.primary else Color.LightGray.copy(alpha = 0.2f))
+                                                .clickable { setupCat = cat }
+                                                .padding(vertical = 4.dp),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Text(cat.split(" ").first(), color = if (isSel) Color.White else Color.DarkGray, fontSize = 9.sp, fontWeight = FontWeight.Bold)
                                         }
-                                        Icon(
-                                            imageVector = Icons.Default.KeyboardArrowRight,
-                                            contentDescription = "Access Kitchen"
-                                        )
                                     }
                                 }
-                            }
-                        }
 
-                        OutlinedButton(
-                            onClick = { selectedMatchingRests = null },
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(12.dp)
-                        ) {
-                            Icon(Icons.Default.ArrowBack, contentDescription = "Back", modifier = Modifier.size(16.dp))
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text("Switch Account / Back to Login")
-                        }
-                    } else if (showOwnerSignupForm) {
-                        // OWNER REGISTER BRAND
-                        Text(
-                            text = "Register New Kitchen Brand",
-                            fontWeight = FontWeight.Bold,
-                            style = MaterialTheme.typography.titleMedium,
-                            color = MaterialTheme.colorScheme.primary
-                        )
-                        Text(
-                            text = "Setup a physical kitchen listing. Link with credentials to allow multi-ownership switching:",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = Color.Gray,
-                            textAlign = TextAlign.Center
-                        )
-
-                        Column(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                            OutlinedTextField(
-                                value = ownerSignupName,
-                                onValueChange = { ownerSignupName = it },
-                                label = { Text("Kitchen/Brand Name") },
-                                placeholder = { Text("e.g. Simba Grills") },
-                                modifier = Modifier.fillMaxWidth().testTag("owner_signup_name"),
-                                singleLine = true
-                            )
-
-                            OutlinedTextField(
-                                value = ownerSignupDesc,
-                                onValueChange = { ownerSignupDesc = it },
-                                label = { Text("Short Slogan/Description") },
-                                placeholder = { Text("Traditional flame-kissed Zimbabwean meats.") },
-                                modifier = Modifier.fillMaxWidth(),
-                                singleLine = true
-                            )
-
-                            OutlinedTextField(
-                                value = ownerSignupLoc,
-                                onValueChange = { ownerSignupLoc = it },
-                                label = { Text("Location") },
-                                placeholder = { Text("Eastlea, Harare") },
-                                modifier = Modifier.fillMaxWidth(),
-                                singleLine = true
-                            )
-
-                            // Horiz chips for Cat
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(4.dp)
-                            ) {
-                                listOf("Fast Food", "Traditional", "Pizza & Grills", "Cafes & Drinks").forEach { cat ->
-                                    val isSel = ownerSignupCat == cat
-                                    Box(
-                                        modifier = Modifier
-                                            .weight(1f)
-                                            .clip(RoundedCornerShape(8.dp))
-                                            .background(if (isSel) MaterialTheme.colorScheme.primary else Color.LightGray.copy(alpha = 0.2f))
-                                            .clickable { ownerSignupCat = cat }
-                                            .padding(vertical = 4.dp),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Text(cat.split(" ").first(), color = if (isSel) Color.White else Color.DarkGray, fontSize = 9.sp, fontWeight = FontWeight.Bold)
-                                    }
+                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    OutlinedTextField(
+                                        value = setupFee,
+                                        onValueChange = { setupFee = it },
+                                        label = { Text("Delivery Fee ($)") },
+                                        modifier = Modifier.weight(1f),
+                                        singleLine = true
+                                    )
+                                    OutlinedTextField(
+                                        value = setupTime,
+                                        onValueChange = { setupTime = it },
+                                        label = { Text("Delivery Time") },
+                                        placeholder = { Text("20-30 min") },
+                                        modifier = Modifier.weight(1f),
+                                        singleLine = true
+                                    )
                                 }
-                            }
 
-                            Divider(color = Color.LightGray.copy(alpha = 0.3f), modifier = Modifier.padding(vertical = 4.dp))
-
-                            Text("Secure Login Credentials", fontWeight = FontWeight.Bold, fontSize = 11.sp, color = MaterialTheme.colorScheme.primary)
-                            Text("If you own another restaurant, use its exact credentials here to link them together!", fontSize = 9.sp, color = Color.Gray)
-
-                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                OutlinedTextField(
-                                    value = ownerSignupUsername,
-                                    onValueChange = { ownerSignupUsername = it },
-                                    label = { Text("Login ID") },
-                                    placeholder = { Text("owner") },
-                                    modifier = Modifier.weight(1f),
-                                    singleLine = true
-                                )
-                                OutlinedTextField(
-                                    value = ownerSignupPassword,
-                                    onValueChange = { ownerSignupPassword = it },
-                                    label = { Text("Password") },
-                                    placeholder = { Text("password") },
-                                    modifier = Modifier.weight(1f),
-                                    singleLine = true
-                                )
-                            }
-
-                            if (ownerSignupError.isNotEmpty()) {
-                                Text(ownerSignupError, color = Color.Red, fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                            }
-
-                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                                OutlinedButton(
-                                    onClick = { showOwnerSignupForm = false },
-                                    modifier = Modifier.weight(1f)
-                                ) {
-                                    Text("Back to Sign In")
+                                if (setupError.isNotEmpty()) {
+                                    Text(setupError, color = Color.Red, fontSize = 10.sp, fontWeight = FontWeight.Bold)
                                 }
+
                                 Button(
                                     onClick = {
-                                        if (ownerSignupName.isBlank() || ownerSignupUsername.isBlank() || ownerSignupPassword.isBlank()) {
-                                            ownerSignupError = "Please fill name, username & password!"
+                                        if (setupName.isBlank() || setupLoc.isBlank()) {
+                                            setupError = "Please fill in your restaurant name and location."
+                                        } else if (currentUid.isNullOrBlank()) {
+                                            setupError = "You need to be signed in to set up a restaurant."
                                         } else {
-                                            val newId = "res_" + System.currentTimeMillis()
-                                            val sampleItems = listOf(
-                                                com.example.model.MenuItem(
-                                                    id = "item_${newId}_1",
-                                                    name = "Signature Platter",
-                                                    description = "Our legendary chef-selected special flame grilled meat with standard portion of chips.",
-                                                    price = 7.99,
-                                                    category = "Mains"
-                                                ),
-                                                com.example.model.MenuItem(
-                                                    id = "item_${newId}_2",
-                                                    name = "Sweet Zimbabwean Lemonade",
-                                                    description = "Squeezed fresh daily with local organic Chimanimani lemons.",
-                                                    price = 2.50,
-                                                    category = "Drinks"
-                                                )
-                                            )
                                             viewModel.addRestaurant(
                                                 com.example.model.Restaurant(
-                                                    id = newId,
-                                                    name = ownerSignupName,
-                                                    description = if (ownerSignupDesc.isBlank()) "Flame grilled local specialties." else ownerSignupDesc,
-                                                    rating = 4.5,
-                                                    deliveryTime = "15-30 min",
-                                                    deliveryFee = 2.00,
-                                                    category = ownerSignupCat,
-                                                    location = ownerSignupLoc,
-                                                    menuItems = sampleItems,
-                                                    imageKeyword = when (ownerSignupCat) {
+                                                    id = "res_" + System.currentTimeMillis(),
+                                                    name = setupName,
+                                                    description = if (setupDesc.isBlank()) "Delicious local meals delivered." else setupDesc,
+                                                    rating = 5.0,
+                                                    deliveryTime = setupTime.ifBlank { "20-30 min" },
+                                                    deliveryFee = setupFee.toDoubleOrNull() ?: 2.00,
+                                                    category = setupCat,
+                                                    location = setupLoc,
+                                                    menuItems = emptyList(),
+                                                    imageKeyword = when (setupCat) {
                                                         "Traditional" -> "sadza"
                                                         "Pizza & Grills" -> "pizza"
                                                         "Cafes & Drinks" -> "cafe"
                                                         else -> "chicken"
                                                     },
-                                                    ownerUsername = ownerSignupUsername.trim(),
-                                                    ownerPassword = ownerSignupPassword.trim()
+                                                    ownerUserId = currentUid,
+                                                    isApproved = false
                                                 )
                                             )
-                                            // Reset signup fields
-                                            ownerSignupName = ""
-                                            ownerSignupDesc = ""
-                                            ownerSignupError = ""
-                                            showOwnerSignupForm = false
-                                            
-                                            // Pre-fill log in credentials
-                                            ownerLoginUsername = ownerSignupUsername.trim()
-                                            ownerLoginPassword = ownerSignupPassword.trim()
                                         }
                                     },
-                                    modifier = Modifier.weight(1.2f).testTag("register_restaurant_brand_btn"),
+                                    modifier = Modifier.fillMaxWidth().testTag("restaurant_setup_submit"),
+                                    shape = RoundedCornerShape(12.dp)
                                 ) {
-                                    Text("Register Kitchen")
-                                }
-                            }
-                        }
-                    } else {
-                        // LOG IN FORM
-                        Text(
-                            text = "Kitchen Hub Authenticator",
-                            fontWeight = FontWeight.Bold,
-                            style = MaterialTheme.typography.titleMedium,
-                            color = MaterialTheme.colorScheme.primary
-                        )
-                        Text(
-                            text = "Secure kitchen node gateway for Zimbabwean brand operators & managers.",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = Color.Gray,
-                            textAlign = TextAlign.Center
-                        )
-
-                        Column(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                            OutlinedTextField(
-                                value = ownerLoginUsername,
-                                onValueChange = { 
-                                    ownerLoginUsername = it
-                                    ownerLoginError = "" 
-                                },
-                                label = { Text("Owner Login ID (Username/Phone)") },
-                                placeholder = { Text("owner") },
-                                modifier = Modifier.fillMaxWidth().testTag("owner_login_username"),
-                                singleLine = true
-                            )
-
-                            OutlinedTextField(
-                                value = ownerLoginPassword,
-                                onValueChange = { 
-                                    ownerLoginPassword = it
-                                    ownerLoginError = ""
-                                },
-                                label = { Text("Owner Password") },
-                                placeholder = { Text("password") },
-                                visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
-                                modifier = Modifier.fillMaxWidth().testTag("owner_login_password"),
-                                singleLine = true
-                            )
-
-                            if (ownerLoginError.isNotEmpty()) {
-                                Text(ownerLoginError, color = Color.Red, fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                            }
-
-                            Button(
-                                onClick = {
-                                    val matched = restaurants.filter {
-                                        it.ownerUsername.trim().lowercase() == ownerLoginUsername.trim().lowercase() &&
-                                        it.ownerPassword.trim() == ownerLoginPassword.trim()
-                                    }
-                                    if (matched.isEmpty()) {
-                                        ownerLoginError = "Incorrect credentials. Try 'owner' and 'password' or register a new brand."
-                                    } else if (matched.size == 1) {
-                                        viewModel.setProfile(UserProfile.RestaurantOwner(matched.first().id, matched.first().name))
-                                    } else {
-                                        // Store discovered restaurants for intermediate selector
-                                        selectedMatchingRests = matched
-                                    }
-                                },
-                                modifier = Modifier.fillMaxWidth().testTag("owner_login_btn"),
-                                shape = RoundedCornerShape(12.dp),
-                                enabled = ownerLoginUsername.isNotBlank() && ownerLoginPassword.isNotBlank()
-                            ) {
-                                Text("Sign In & Open Kitchen")
-                            }
-
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                TextButton(
-                                    onClick = {
-                                        ownerLoginUsername = "owner"
-                                        ownerLoginPassword = "password"
-                                        ownerLoginError = ""
-                                    }
-                                ) {
-                                    Text("🔑 Quick Demo Fill", fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                                }
-
-                                TextButton(
-                                    onClick = { 
-                                        showOwnerSignupForm = true
-                                        ownerSignupUsername = ownerLoginUsername
-                                        ownerSignupPassword = ownerLoginPassword
-                                    }
-                                ) {
-                                    Text("📝 Register New Kitchen", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                    Text("Create My Restaurant")
                                 }
                             }
                         }
@@ -3655,13 +3497,12 @@ fun RestaurantOwnerDashboard(
     val activeOrders = matchedOrders.filter { it.status != "COMPLETED" }
     val completedOrders = matchedOrders.filter { it.status == "COMPLETED" }
 
-    val currentOwnerUser = restaurant?.ownerUsername ?: ""
-    val currentOwnerPass = restaurant?.ownerPassword ?: ""
-    
-    val otherOwnedRestaurants = if (currentOwnerUser.isNotEmpty() && currentOwnerPass.isNotEmpty()) {
-        restaurants.filter { 
-            it.ownerUsername.lowercase().trim() == currentOwnerUser.lowercase().trim() &&
-            it.ownerPassword.trim() == currentOwnerPass.trim() &&
+    // An account can own more than one restaurant if an admin links the
+    // same ownerUserId to multiple listings — matched by real Firebase
+    // UID now, not a shared plaintext username/password.
+    val otherOwnedRestaurants = if (owner.firebaseUid.isNotEmpty()) {
+        restaurants.filter {
+            it.ownerUserId == owner.firebaseUid &&
             it.id != owner.restaurantId
         }
     } else {
@@ -3683,11 +3524,11 @@ fun RestaurantOwnerDashboard(
                         
                         ElevatedCard(
                             onClick = {
-                                viewModel.setProfile(UserProfile.RestaurantOwner(otherRest.id, otherRest.name))
+                                viewModel.setProfile(UserProfile.RestaurantOwner(otherRest.id, otherRest.name, owner.firebaseUid))
                                 showSwitchKitchenDialog = false
                             },
                             modifier = Modifier.fillMaxWidth().clickable {
-                                viewModel.setProfile(UserProfile.RestaurantOwner(otherRest.id, otherRest.name))
+                                viewModel.setProfile(UserProfile.RestaurantOwner(otherRest.id, otherRest.name, owner.firebaseUid))
                                 showSwitchKitchenDialog = false
                             }
                         ) {
@@ -3753,6 +3594,23 @@ fun RestaurantOwnerDashboard(
                 .fillMaxSize()
                 .padding(innerPadding)
         ) {
+            if (restaurant?.isApproved == false) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(Color(0xFFFFF7ED))
+                        .padding(horizontal = 16.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Icon(Icons.Default.Info, contentDescription = null, tint = Color(0xFFF59E0B), modifier = Modifier.size(18.dp))
+                    Text(
+                        "Your restaurant is pending admin approval — customers see it as \"Coming Soon\" until it's approved. You can still set up your menu below.",
+                        fontSize = 11.sp,
+                        color = Color(0xFF92400E)
+                    )
+                }
+            }
             TabRow(selectedTabIndex = selectedTab) {
                 Tab(
                     selected = selectedTab == 0,

@@ -18,8 +18,8 @@ data class RestaurantEntity(
     val menuItems: List<MenuItem>,
     val imageKeyword: String,
     val displayOrder: Int = 0,
-    val ownerUsername: String = "owner",
-    val ownerPassword: String = "password"
+    val ownerUserId: String = "",
+    val isApproved: Boolean = true
 ) {
     fun toDomain(): Restaurant = Restaurant(
         id = id,
@@ -33,8 +33,8 @@ data class RestaurantEntity(
         menuItems = menuItems,
         imageKeyword = imageKeyword,
         displayOrder = displayOrder,
-        ownerUsername = ownerUsername,
-        ownerPassword = ownerPassword
+        ownerUserId = ownerUserId,
+        isApproved = isApproved
     )
 }
 
@@ -50,6 +50,6 @@ fun Restaurant.toEntity(): RestaurantEntity = RestaurantEntity(
     menuItems = menuItems,
     imageKeyword = imageKeyword,
     displayOrder = displayOrder,
-    ownerUsername = ownerUsername,
-    ownerPassword = ownerPassword
+    ownerUserId = ownerUserId,
+    isApproved = isApproved
 )

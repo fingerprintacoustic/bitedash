@@ -20,8 +20,8 @@ data class Restaurant(
     val menuItems: List<MenuItem>,
     val imageKeyword: String, // Used to decide background colors or graphics if icons aren't available
     val displayOrder: Int = 0,
-    val ownerUsername: String = "owner",
-    val ownerPassword: String = "password"
+    val ownerUserId: String = "", // Firebase Auth UID of the account that owns this restaurant
+    val isApproved: Boolean = true // false = pending admin review, shown to customers as "Coming Soon"
 )
 
 data class CartItem(

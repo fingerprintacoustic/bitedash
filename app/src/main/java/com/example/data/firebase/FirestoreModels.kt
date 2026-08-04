@@ -59,10 +59,13 @@ data class FirestoreRestaurant(
     val location: String = "",
     val imageKeyword: String = "",
     val displayOrder: Int = 0,
-    // Owner credentials (for restaurant owner login)
-    val ownerUsername: String = "owner",
-    val ownerPassword: String = "password",
+    // Links this restaurant to the real Firebase Auth account that owns
+    // it. Previously restaurants also had a separate plaintext
+    // ownerUsername/ownerPassword pair (defaulting to "owner"/"password"
+    // for every restaurant) checked outside Firebase Auth entirely — that
+    // was a real backdoor and has been removed in favor of this.
     val ownerUserId: String = "", // Reference to users collection
+    val isApproved: Boolean = true, // false = pending admin review, shown to customers as "Coming Soon"
     // Menu reference
     val menuItemIds: List<String> = emptyList(),
     // Payout info

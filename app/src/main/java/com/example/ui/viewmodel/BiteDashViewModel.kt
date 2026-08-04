@@ -299,6 +299,12 @@ viewModelScope.launch {
         }
     }
 
+    fun approveRestaurant(restaurantId: String) {
+        viewModelScope.launch {
+            firestoreService.updateRestaurantField(restaurantId, "isApproved", true)
+        }
+    }
+
     fun moveRestaurantUp(restaurant: Restaurant) {
         val list = restaurantsState.value.sortedBy { it.displayOrder }
         val index = list.indexOfFirst { it.id == restaurant.id }
