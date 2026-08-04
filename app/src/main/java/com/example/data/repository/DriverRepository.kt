@@ -15,8 +15,16 @@ class DriverRepository(private val driverDao: DriverDao) {
         driverDao.insertDrivers(drivers)
     }
 
-    suspend fun deleteDriverById(id: Int) {
+    suspend fun deleteDriverById(id: String) {
         driverDao.deleteDriverById(id)
+    }
+
+    // Replaces the entire local table with the given list — used when
+    // syncing down from Firestore, so deletions/updates on other devices
+    // are correctly reflected here too, not just additions.
+    suspend fun replaceAll(drivers: List<DriverEntity>) {
+        driverDao.deleteAll()
+        driverDao.insertDrivers(drivers)
     }
 
     suspend fun getCount(): Int {

@@ -19,7 +19,10 @@ interface DriverDao {
     suspend fun insertDrivers(drivers: List<DriverEntity>)
 
     @Query("DELETE FROM drivers WHERE id = :driverId")
-    suspend fun deleteDriverById(driverId: Int)
+    suspend fun deleteDriverById(driverId: String)
+
+    @Query("DELETE FROM drivers")
+    suspend fun deleteAll()
 
     @Query("SELECT COUNT(*) FROM drivers")
     suspend fun getCount(): Int

@@ -26,7 +26,7 @@ interface OrderDao {
     suspend fun updateOrderStatus(orderId: Int, status: String)
 
     @Query("UPDATE orders SET status = :status, driverId = :driverId, driverName = :driverName WHERE id = :orderId")
-    suspend fun claimOrder(orderId: Int, driverId: Int, driverName: String, status: String)
+    suspend fun claimOrder(orderId: Int, driverId: String, driverName: String, status: String)
 
     @Query("UPDATE orders SET isSettled = 1 WHERE status = 'COMPLETED' AND isSettled = 0")
     suspend fun markCompletedOrdersAsSettled()

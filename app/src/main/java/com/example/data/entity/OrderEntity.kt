@@ -14,7 +14,7 @@ data class OrderEntity(
     val status: String,
     val driverTip: Double = 0.0,
     val timestamp: Long = System.currentTimeMillis(),
-    val driverId: Int? = null,
+    val driverId: String? = null,
     val driverName: String? = null,
     val isSettled: Boolean = false
 )

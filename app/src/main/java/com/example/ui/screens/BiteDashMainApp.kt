@@ -3967,7 +3967,7 @@ fun DriverDashboard(
 
     // Create driver delivery view model
     val driverViewModel = remember(driver.driverId) {
-        DriverDeliveryViewModel(FirestoreService(), driver.driverId.toString(), driver.driverName)
+        DriverDeliveryViewModel(FirestoreService(), driver.driverId, driver.driverName)
     }
 
     val claimableOrders = orderHistory.filter { (it.status == "READY_FOR_PICKUP" || it.status == "PREPARING") && it.driverId == null }
@@ -4195,7 +4195,7 @@ fun WebDashboardSimulatorDialog(
 
     var activeWebTab by remember { mutableStateOf(0) } // 0: Restaurant Center, 1: Rider Statement, 2: Admin Escrow Console
     var selectedWebRestaurantId by remember { mutableStateOf<String?>(null) }
-    var selectedWebDriverId by remember { mutableStateOf<Int?>(null) }
+    var selectedWebDriverId by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(restaurants) {
         if (restaurants.isNotEmpty() && selectedWebRestaurantId == null) {

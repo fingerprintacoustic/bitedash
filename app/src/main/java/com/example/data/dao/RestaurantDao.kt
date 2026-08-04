@@ -20,7 +20,10 @@ interface RestaurantDao {
 
     @Query("DELETE FROM restaurants WHERE id = :restaurantId")
     suspend fun deleteRestaurantById(restaurantId: String)
-    
+
+    @Query("DELETE FROM restaurants")
+    suspend fun deleteAll()
+
     @Query("SELECT COUNT(*) FROM restaurants")
     suspend fun getCount(): Int
 }

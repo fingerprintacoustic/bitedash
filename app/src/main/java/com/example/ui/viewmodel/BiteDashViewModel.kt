@@ -1,19 +1,23 @@
 package com.example.ui.viewmodel
 
-import android.app.Application 
-import com.example.BuildConfig
+import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.data.AppDatabase
 import com.example.data.entity.OrderEntity
-import com.example.data.entity.RestaurantEntity
 import com.example.data.entity.DriverEntity
 import com.example.data.entity.toEntity
 import com.example.data.repository.OrderRepository
 import com.example.data.repository.RestaurantRepository
 import com.example.data.repository.DriverRepository
 import com.example.data.firebase.FirestoreAdminSettings
+import com.example.data.firebase.FirestoreDriver
 import com.example.data.firebase.FirestoreService
+import com.example.data.firebase.toFirestoreDriver
+import com.example.data.firebase.toFirestoreMenuItem
+import com.example.data.firebase.toFirestoreRestaurant
+import com.example.data.firebase.toMenuItem
+import com.example.data.firebase.toRoomEntity
 import com.example.model.CartItem
 import com.example.model.MenuItem
 import com.example.model.Restaurant
@@ -23,6 +27,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
@@ -44,7 +49,7 @@ sealed interface UserProfile {
         val firebaseUid: String = "" // Firebase Auth UID when authenticated
     ) : UserProfile
     data class Driver(
-        val driverId: Int, 
+        val driverId: String, 
         val driverName: String,
         val firebaseUid: String = "" // Firebase Auth UID when authenticated
     ) : UserProfile
@@ -66,86 +71,8 @@ class BiteDashViewModel(application: Application) : AndroidViewModel(application
     private val repository: OrderRepository
     private val restaurantRepo: RestaurantRepository
     private val driverRepo: DriverRepository
+    private val firestoreService = FirestoreService()
     private var trackingJob: Job? = null
-
-    // Fallback static mock list used strictly as seed data on empty DB boot
-    private val defaultRestaurants = listOf(
-        Restaurant(
-            id = "chicken_inn_belgravia",
-            name = "Chicken Inn (Belgravia)",
-            description = "Zimbabwe's favorite flame-grilled chicken, burgers, and hand-cut chips.",
-            rating = 4.7,
-            deliveryTime = "15-25 min",
-            deliveryFee = 2.00,
-            category = "Fast Food",
-            location = "Belgravia, Harare",
-            imageKeyword = "chicken",
-            displayOrder = 0,
-            menuItems = listOf(
-                MenuItem("ci_1", "2-Piece & Chips", "Slightly spiced crispy 2-piece chicken with gold standard chips.", 3.50, "Mains"),
-                MenuItem("ci_2", "Simbisa Flame-Grilled Quarter", "Flame-grilled succulent quarter chicken in lemon/herb or piri-piri.", 4.00, "Mains"),
-                MenuItem("ci_3", "Chicken Inn Spicy Wings (6 Pack)", "Crispy breaded wings tossed in hot chilli shaker seasoning.", 4.50, "Sides"),
-                MenuItem("ci_4", "Family Feast (8-Piece & Mega Chips)", "Perfect family bucket of 8 crispy chicken pieces + premium mega chips.", 13.50, "Feasts"),
-                MenuItem("ci_5", "Classic Chicken Burger", "Tender breast fillet with crisp lettuce and Simbisa spread.", 3.50, "Mains")
-            )
-        ),
-        Restaurant(
-            id = "garwe_traditional",
-            name = "Garwe Traditional Restaurant",
-            description = "Savor authentic Zimbabwean heritage. High-quality traditional dishes in Eastlea.",
-            rating = 4.9,
-            deliveryTime = "25-35 min",
-            deliveryFee = 3.50,
-            category = "Traditional",
-            location = "Eastlea, Harare",
-            imageKeyword = "sadza",
-            displayOrder = 1,
-            menuItems = listOf(
-                MenuItem("gw_1", "Sadza with Road Runner Chicken", "Authentic hard-body Zimbabwean free-range village chicken in rich domestic gravy with sadza and rape greens.", 6.50, "Traditional"),
-                MenuItem("gw_2", "Sadza with Beef Stew & Covo", "Savory slow-cooked Zimbabwean beef stew served with fine white sadza, covo greens, and peanut butter sauce.", 5.00, "Traditional"),
-                MenuItem("gw_3", "Madora (Crispy Mopane Worms)", "Traditional pan-fried mopane worms seasoned with salt, onions, and black pepper. Rich in protein!", 4.00, "Snacks"),
-                MenuItem("gw_4", "Mupunga weDovi & Rich Oxtail", "Traditional peanut butter rice paired with premium tender slow-simmered oxtail.", 8.50, "Premium"),
-                MenuItem("gw_5", "Mazondo (Beef Trotters)", "Gently gelled beef trotters slow cooked for 6 hours in full spicy traditional stock.", 7.00, "Traditional")
-            )
-        ),
-        Restaurant(
-            id = "pizza_inn_avondale",
-            name = "Pizza Inn (Avondale)",
-            description = "Hot, fresh pizza using premium dough and 100% mozzarella cheese.",
-            rating = 4.6,
-            deliveryTime = "20-30 min",
-            deliveryFee = 2.50,
-            category = "Pizza & Grills",
-            location = "Avondale Shopping Centre, Harare",
-            imageKeyword = "pizza",
-            displayOrder = 2,
-            menuItems = listOf(
-                MenuItem("pi_1", "Simbisa BBQ Chicken Pizza (Medium)", "Sweet BBQ sauce base, roasted chicken breast, and red onions.", 7.50, "Pizzas"),
-                MenuItem("pi_2", "Pepperoni Feast Pizza (Medium)", "Loads of traditional pepperoni slices loaded with standard mozzarella.", 8.00, "Pizzas"),
-                MenuItem("pi_3", "Mega Meat Deluxe (Large)", "Salami, beef, pepperoni, visual bacon crumbs, and rich pizza sauce.", 11.50, "Pizzas"),
-                MenuItem("pi_4", "Garlic Cheese Bread", "Freshly baked pizza bread with garlic herb spread and mozzarella.", 3.00, "Sides"),
-                MenuItem("pi_5", "Sweet Chilli Chicken Pizza", "Sweet chilli swirl, tender chicken breast, and green peppers.", 8.00, "Pizzas")
-            )
-        ),
-        Restaurant(
-            id = "zambezi_cafe",
-            name = "Zambezi Cafe",
-            description = "Vibrant local eatery blending coffee, game grills, and Victoria Falls tea brews.",
-            rating = 4.5,
-            deliveryTime = "20-30 min",
-            deliveryFee = 3.00,
-            category = "Cafes & Drinks",
-            location = "Harare CBD, Central",
-            imageKeyword = "cafe",
-            displayOrder = 3,
-            menuItems = listOf(
-                MenuItem("zc_1", "Kariba Pan-Fried Bream & Wedges", "Freshly caught Zambezi / Kariba bream fillet with rustic hand-cut wedges.", 9.00, "Mains"),
-                MenuItem("zc_2", "Victoria Falls Sunset Latte", "Dual layer espresso with whipped vanilla, spiced nutmeg, and honey.", 3.50, "Drinks"),
-                MenuItem("zc_3", "Chimanimani Mountain Herbal Tea", "Organic wild rooibos infusion direct from the scenic Chimanimani hills.", 2.50, "Drinks"),
-                MenuItem("zc_4", "Ginger Sadza Scones (3-Pack)", "Unique fusion scones made with white maize flour and fresh ginger molasses.", 3.00, "Bakery")
-            )
-        )
-    )
 
     // Flowing States
     private val _currentProfile = MutableStateFlow<UserProfile>(UserProfile.Idle)
@@ -315,23 +242,29 @@ class BiteDashViewModel(application: Application) : AndroidViewModel(application
             }
         }
 
-// Seeding mock entries if database is pristine — DEBUG builds only.
-// Production installs must start empty; real restaurants/drivers are
-// added via sign-up, not fake placeholder data.
-if (BuildConfig.DEBUG) {
-    viewModelScope.launch {
-        if (restaurantRepo.getCount() == 0) {
-            restaurantRepo.insertRestaurants(defaultRestaurants.map { it.toEntity() })
+// Restaurants and drivers are shared across every device via Firestore.
+// Room is kept as a local cache only — these listeners run for the life
+// of the app and mirror Firestore into Room every time the cloud data
+// changes, so admin edits made on one device (or by a restaurant/driver
+// signing up) show up on everyone else's device too, not just the one
+// that made the change.
+viewModelScope.launch {
+    firestoreService.getRestaurantsFlow().collect { firestoreRestaurants ->
+        val entities = firestoreRestaurants.map { fr ->
+            val menuItems = try {
+                firestoreService.getMenuItemsFlow(fr.id).first().map { it.toMenuItem() }
+            } catch (e: Exception) {
+                emptyList()
+            }
+            fr.toRoomEntity(menuItems)
         }
-        if (driverRepo.getCount() == 0) {
-            val seedDrivers = listOf(
-                DriverEntity(name = "Tinashe", phone = "0771234567", vehicle = "Motorbike"),
-                DriverEntity(name = "Chipo", phone = "0783214569", vehicle = "Bicycle"),
-                DriverEntity(name = "Farai", phone = "0711556677", vehicle = "Honda Fit"),
-                DriverEntity(name = "Nyasha", phone = "0734889900", vehicle = "Motorbike")
-            )
-            driverRepo.insertDrivers(seedDrivers)
-        }
+        restaurantRepo.replaceAll(entities)
+    }
+}
+
+viewModelScope.launch {
+    firestoreService.getDriversFlow().collect { firestoreDrivers ->
+        driverRepo.replaceAll(firestoreDrivers.map { it.toRoomEntity() })
     }
 }
 
@@ -350,13 +283,19 @@ if (BuildConfig.DEBUG) {
     fun addRestaurant(restaurant: Restaurant) {
         val maxOrder = restaurantsState.value.maxOfOrNull { it.displayOrder } ?: 0
         viewModelScope.launch {
-            restaurantRepo.insertRestaurant(restaurant.copy(displayOrder = maxOrder + 1).toEntity())
+            val toCreate = restaurant.copy(displayOrder = maxOrder + 1)
+            val newId = firestoreService.createRestaurant(toCreate.toEntity().toFirestoreRestaurant())
+            if (newId != null) {
+                toCreate.menuItems.forEach { item ->
+                    firestoreService.createMenuItem(item.toFirestoreMenuItem(newId))
+                }
+            }
         }
     }
 
     fun removeRestaurant(restaurantId: String) {
         viewModelScope.launch {
-            restaurantRepo.deleteRestaurantById(restaurantId)
+            firestoreService.deleteRestaurant(restaurantId)
         }
     }
 
@@ -370,12 +309,12 @@ if (BuildConfig.DEBUG) {
             val currentOrder = current.displayOrder
             val aboveOrder = above.displayOrder
             
-            val newCurrentOrder = if (currentOrder == aboveOrder) aboveOrder else aboveOrder
+            val newCurrentOrder = aboveOrder
             val newAboveOrder = if (currentOrder == aboveOrder) aboveOrder + 1 else currentOrder
             
             viewModelScope.launch {
-                restaurantRepo.insertRestaurant(current.copy(displayOrder = newCurrentOrder).toEntity())
-                restaurantRepo.insertRestaurant(above.copy(displayOrder = newAboveOrder).toEntity())
+                firestoreService.updateRestaurantField(current.id, "displayOrder", newCurrentOrder)
+                firestoreService.updateRestaurantField(above.id, "displayOrder", newAboveOrder)
             }
         }
     }
@@ -394,8 +333,8 @@ if (BuildConfig.DEBUG) {
             val newBelowOrder = if (currentOrder == belowOrder) belowOrder else currentOrder
             
             viewModelScope.launch {
-                restaurantRepo.insertRestaurant(current.copy(displayOrder = newCurrentOrder).toEntity())
-                restaurantRepo.insertRestaurant(below.copy(displayOrder = newBelowOrder).toEntity())
+                firestoreService.updateRestaurantField(current.id, "displayOrder", newCurrentOrder)
+                firestoreService.updateRestaurantField(below.id, "displayOrder", newBelowOrder)
             }
         }
     }
@@ -405,9 +344,23 @@ if (BuildConfig.DEBUG) {
             val existing = restaurantsState.value.find { it.id == restaurantId }
             if (existing != null) {
                 val updated = existing.copy(menuItems = updatedMenuItems)
-                restaurantRepo.insertRestaurant(updated.toEntity())
+                // Optimistic local update so the editing admin sees the change
+                // instantly; the Firestore listener will reconcile shortly after.
                 if (_selectedRestaurant.value?.id == restaurantId) {
                     _selectedRestaurant.value = updated
+                }
+
+                // Replace the menu in Firestore: retire the old items, add the new ones.
+                val currentFirestoreItems = try {
+                    firestoreService.getMenuItemsFlow(restaurantId).first()
+                } catch (e: Exception) {
+                    emptyList()
+                }
+                currentFirestoreItems.forEach { item ->
+                    firestoreService.updateMenuItemField(item.id, "isAvailable", false)
+                }
+                updatedMenuItems.forEach { item ->
+                    firestoreService.createMenuItem(item.toFirestoreMenuItem(restaurantId))
                 }
             }
         }
@@ -415,13 +368,13 @@ if (BuildConfig.DEBUG) {
 
     fun addDriver(name: String, phone: String, vehicle: String) {
         viewModelScope.launch {
-            driverRepo.insertDriver(DriverEntity(name = name, phone = phone, vehicle = vehicle))
+            firestoreService.createDriver(FirestoreDriver(name = name, phone = phone, vehicle = vehicle))
         }
     }
 
-    fun removeDriver(id: Int) {
+    fun removeDriver(id: String) {
         viewModelScope.launch {
-            driverRepo.deleteDriverById(id)
+            firestoreService.deleteDriver(id)
         }
     }
 
@@ -766,7 +719,7 @@ if (BuildConfig.DEBUG) {
         _isManualMode.value = isManual
     }
 
-    fun claimOrderManual(orderId: Int, driverId: Int, driverName: String) {
+    fun claimOrderManual(orderId: Int, driverId: String, driverName: String) {
         viewModelScope.launch {
             repository.claimOrder(orderId, driverId, driverName, "OUT_FOR_DELIVERY")
             val currentActive = _activeOrder.value

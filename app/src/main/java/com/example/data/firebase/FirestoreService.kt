@@ -655,6 +655,18 @@ class FirestoreService {
         }
     }
 
+    suspend fun deleteDriver(driverId: String): Boolean {
+        return try {
+            db.collection(COLLECTION_DRIVERS)
+                .document(driverId)
+                .update("isActive", false, "updatedAt", Timestamp.now())
+                .await()
+            true
+        } catch (e: Exception) {
+            false
+        }
+    }
+
     suspend fun updateDriverPayoutInfo(
         driverId: String,
         ecoCashNumber: String,

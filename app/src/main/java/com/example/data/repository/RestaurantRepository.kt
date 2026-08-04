@@ -19,6 +19,14 @@ class RestaurantRepository(private val restaurantDao: RestaurantDao) {
         restaurantDao.deleteRestaurantById(id)
     }
 
+    // Replaces the entire local table with the given list — used when
+    // syncing down from Firestore, so deletions/updates on other devices
+    // are correctly reflected here too, not just additions.
+    suspend fun replaceAll(restaurants: List<RestaurantEntity>) {
+        restaurantDao.deleteAll()
+        restaurantDao.insertRestaurants(restaurants)
+    }
+
     suspend fun getCount(): Int {
         return restaurantDao.getCount()
     }

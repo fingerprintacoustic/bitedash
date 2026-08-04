@@ -20,7 +20,7 @@ class OrderRepository(private val orderDao: OrderDao) {
         orderDao.updateOrderStatus(orderId, status)
     }
 
-    suspend fun claimOrder(orderId: Int, driverId: Int, driverName: String, status: String) {
+    suspend fun claimOrder(orderId: Int, driverId: String, driverName: String, status: String) {
         orderDao.claimOrder(orderId, driverId, driverName, status)
     }
 
