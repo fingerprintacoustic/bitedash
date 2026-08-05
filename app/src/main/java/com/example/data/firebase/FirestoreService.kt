@@ -608,6 +608,21 @@ class FirestoreService {
         }
     }
 
+    // Self-registration: the driver's own account creates their profile,
+    // using their Firebase UID as the document ID so firestore.rules can
+    // verify ownership without a separate lookup field.
+    suspend fun registerDriverSelf(uid: String, driver: FirestoreDriver): Boolean {
+        return try {
+            db.collection(COLLECTION_DRIVERS)
+                .document(uid)
+                .set(driver.copy(userId = uid))
+                .await()
+            true
+        } catch (e: Exception) {
+            false
+        }
+    }
+
     suspend fun updateDriver(driver: FirestoreDriver): Boolean {
         return try {
             db.collection(COLLECTION_DRIVERS)

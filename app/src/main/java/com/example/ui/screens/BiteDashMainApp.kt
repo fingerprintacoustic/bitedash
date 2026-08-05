@@ -61,6 +61,7 @@ import com.example.data.firebase.FirestoreService
 import com.example.ui.screens.auth.AuthenticationGate
 import com.example.ui.screens.restaurant.RestaurantOrdersScreen
 import com.example.ui.screens.driver.DriverOrdersScreen
+import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -3080,7 +3081,6 @@ fun RoleSelectionGate(
     userRole: UserRole = UserRole.CUSTOMER
 ) {
     val restaurants by viewModel.restaurantsState.collectAsStateWithLifecycle()
-    val drivers by viewModel.driversState.collectAsStateWithLifecycle()
     val isManualMode by viewModel.isManualMode.collectAsStateWithLifecycle()
     
     // Check if user is authenticated and use their role
@@ -3119,6 +3119,19 @@ fun RoleSelectionGate(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
+            if (isAuthenticated) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End
+                ) {
+                    TextButton(onClick = { authViewModel?.signOut() }) {
+                        Icon(Icons.Default.ExitToApp, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Sign Out", fontSize = 12.sp)
+                    }
+                }
+            }
+
             // Logo
             Box(
                 modifier = Modifier
@@ -3392,41 +3405,143 @@ fun RoleSelectionGate(
                     }
                 }
                 2 -> {
-                    // DRIVER
-                    Text(
-                        "Join as active courier rider to claim delivery jobs and view routing maps:",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = Color.Gray
-                    )
+                    // RIDER PORTAL
+                    // Tied to the signed-in account's real Firestore role
+                    // and Firebase UID — previously any signed-in user
+                    // could tap any existing driver in a shared list and
+                    // become that driver, with zero ownership check.
+                    val currentUid = authViewModel?.getCurrentUserId()
+                    var myDriverChecked by remember { mutableStateOf(false) }
+                    var myDriver by remember { mutableStateOf<com.example.data.firebase.FirestoreDriver?>(null) }
 
-                    LazyColumn(
-                        modifier = Modifier.heightIn(max = 180.dp),
-                        verticalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        items(drivers) { d ->
-                            ElevatedCard(
-                                onClick = { viewModel.setProfile(UserProfile.Driver(d.id, d.name)) },
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
+                    LaunchedEffect(currentUid) {
+                        if (!currentUid.isNullOrBlank()) {
+                            myDriver = com.example.data.firebase.FirestoreService().getDriver(currentUid)
+                        }
+                        myDriverChecked = true
+                    }
+
+                    when {
+                        currentUserRole != UserRole.DRIVER -> {
+                            Text(
+                                text = "Rider Portal",
+                                fontWeight = FontWeight.Bold,
+                                style = MaterialTheme.typography.titleMedium,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                            Text(
+                                text = "This section is for registered rider accounts. Sign up with the Delivery Driver role (or ask an admin to switch your account) to get started.",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = Color.Gray,
+                                textAlign = TextAlign.Center
+                            )
+                        }
+                        !myDriverChecked -> {
+                            CircularProgressIndicator()
+                        }
+                        myDriver != null -> {
+                            LaunchedEffect(myDriver!!.id) {
+                                viewModel.setProfile(UserProfile.Driver(myDriver!!.id, myDriver!!.name, currentUid ?: ""))
+                            }
+                            CircularProgressIndicator()
+                        }
+                        else -> {
+                            var setupName by remember { mutableStateOf("") }
+                            var setupPhone by remember { mutableStateOf("") }
+                            var setupVehicle by remember { mutableStateOf("Motorbike") }
+                            var setupError by remember { mutableStateOf("") }
+                            var submitting by remember { mutableStateOf(false) }
+                            val scope = rememberCoroutineScope()
+
+                            Text(
+                                text = "Set Up Your Rider Profile",
+                                fontWeight = FontWeight.Bold,
+                                style = MaterialTheme.typography.titleMedium,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                            Text(
+                                text = "You're signed in as a rider account — let's get you registered to claim delivery jobs.",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = Color.Gray,
+                                textAlign = TextAlign.Center
+                            )
+
+                            Column(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                                OutlinedTextField(
+                                    value = setupName,
+                                    onValueChange = { setupName = it },
+                                    label = { Text("Full Name") },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    singleLine = true
+                                )
+                                OutlinedTextField(
+                                    value = setupPhone,
+                                    onValueChange = { setupPhone = it },
+                                    label = { Text("Phone Number") },
+                                    placeholder = { Text("+263 77 123 4567") },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    singleLine = true
+                                )
                                 Row(
-                                    modifier = Modifier.padding(12.dp),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
                                 ) {
-                                    Column {
-                                        Text(d.name, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium)
-                                        Text("${d.vehicle} • ${d.phone}", style = MaterialTheme.typography.labelSmall, color = Color.Gray)
+                                    listOf("Bicycle", "Motorbike", "Car").forEach { v ->
+                                        val isSel = setupVehicle == v
+                                        Box(
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .clip(RoundedCornerShape(8.dp))
+                                                .background(if (isSel) MaterialTheme.colorScheme.primary else Color.LightGray.copy(alpha = 0.2f))
+                                                .clickable { setupVehicle = v }
+                                                .padding(vertical = 8.dp),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Text(v, color = if (isSel) Color.White else Color.DarkGray, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                        }
                                     }
-                                    Icon(
-                                        imageVector = Icons.Default.KeyboardArrowRight,
-                                        contentDescription = "Select"
-                                    )
+                                }
+
+                                if (setupError.isNotEmpty()) {
+                                    Text(setupError, color = Color.Red, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                }
+
+                                Button(
+                                    onClick = {
+                                        if (setupName.isBlank() || setupPhone.isBlank()) {
+                                            setupError = "Please fill in your name and phone number."
+                                        } else if (currentUid.isNullOrBlank()) {
+                                            setupError = "You need to be signed in to register."
+                                        } else {
+                                            submitting = true
+                                            scope.launch {
+                                                val ok = com.example.data.firebase.FirestoreService().registerDriverSelf(
+                                                    currentUid,
+                                                    com.example.data.firebase.FirestoreDriver(
+                                                        name = setupName,
+                                                        phone = setupPhone,
+                                                        vehicle = setupVehicle,
+                                                        userId = currentUid,
+                                                        isAvailable = true
+                                                    )
+                                                )
+                                                submitting = false
+                                                if (ok) {
+                                                    myDriver = com.example.data.firebase.FirestoreService().getDriver(currentUid)
+                                                } else {
+                                                    setupError = "Something went wrong — please try again."
+                                                }
+                                            }
+                                        }
+                                    },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    shape = RoundedCornerShape(12.dp),
+                                    enabled = !submitting
+                                ) {
+                                    Text(if (submitting) "Registering…" else "Register as Rider")
                                 }
                             }
                         }
-                    }
-                    if (drivers.isEmpty()) {
-                        Text("No drivers registered. Login as Admin to register, approve or remove riders.", style = MaterialTheme.typography.bodySmall, color = Color.Red)
                     }
                 }
                 3 -> {

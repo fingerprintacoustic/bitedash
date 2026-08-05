@@ -223,6 +223,7 @@ data class FirestoreDriver(
     val name: String = "",
     val phone: String = "",
     val vehicle: String = "", // Bicycle, Motorbike, Car
+    val userId: String = "", // Firebase Auth UID of the account that owns this driver profile
     val isAvailable: Boolean = true,
     val isActive: Boolean = true,
     // Payout info

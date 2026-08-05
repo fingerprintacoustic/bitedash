@@ -166,8 +166,18 @@ service cloud.firestore {
     // ==================== DRIVERS ====================
     
     match /drivers/{driverId} {
-      // Drivers can read their own profile
-      allow read: if isAuthenticated() && resource.data.userId == request.auth.uid;
+      // Drivers can read their own profile. resource == null covers a
+      // driver checking whether their own profile exists yet, before
+      // it's been created.
+      allow read: if isAuthenticated() && (
+        resource == null || resource.data.userId == request.auth.uid
+      );
+
+      // A driver-role account can create its own profile, self-linked by
+      // using their Firebase UID as the document ID — no admin bottleneck
+      // required to register.
+      allow create: if isAuthenticated() && driverId == request.auth.uid &&
+        request.resource.data.userId == request.auth.uid;
       
       // Drivers can update their own availability and location
       allow update: if isAuthenticated() && resource.data.userId == request.auth.uid &&
