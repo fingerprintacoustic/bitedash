@@ -628,7 +628,6 @@ fun RestaurantCard(restaurant: Restaurant, onClick: () -> Unit) {
 @Composable
 fun RestaurantDetailScreen(restaurant: Restaurant, viewModel: BiteDashViewModel) {
     val cart by viewModel.cart.collectAsStateWithLifecycle()
-    var isEditMenuOpen by remember { mutableStateOf(false) }
 
     val (primaryBrush, emoji) = when (restaurant.imageKeyword) {
         "chicken" -> Pair(Brush.linearGradient(listOf(Color(0xFFFF9800), Color(0xFFE65100))), "🍗")
@@ -664,28 +663,12 @@ fun RestaurantDetailScreen(restaurant: Restaurant, viewModel: BiteDashViewModel)
                     )
                 }
 
-                // Edit Menu Button
-                FilledTonalButton(
-                    onClick = { isEditMenuOpen = true },
-                    shape = RoundedCornerShape(12.dp),
-                    colors = ButtonDefaults.filledTonalButtonColors(
-                        containerColor = Color.White,
-                        contentColor = MaterialTheme.colorScheme.primary
-                    ),
-                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
-                    modifier = Modifier
-                        .padding(16.dp)
-                        .align(Alignment.TopEnd)
-                        .testTag("detail_manage_menu_button")
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Edit,
-                        contentDescription = "Edit Menu",
-                        modifier = Modifier.size(16.dp)
-                    )
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text("Manage Menu", fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                }
+                // Menu editing lives only in the restaurant owner's own
+                // dashboard now (RestaurantOwnerDashboard), gated by real
+                // account ownership. It used to also be reachable from
+                // here, on the page every customer sees, with no
+                // ownership check at all — anyone signed in could rewrite
+                // any restaurant's entire menu.
 
                 Column(
                     modifier = Modifier
@@ -877,14 +860,6 @@ fun RestaurantDetailScreen(restaurant: Restaurant, viewModel: BiteDashViewModel)
         item {
             Spacer(modifier = Modifier.height(32.dp))
         }
-    }
-
-    if (isEditMenuOpen) {
-        EditMenuDialog(
-            restaurant = restaurant,
-            viewModel = viewModel,
-            onDismiss = { isEditMenuOpen = false }
-        )
     }
 }
 
