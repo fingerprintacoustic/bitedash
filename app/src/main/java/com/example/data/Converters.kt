@@ -10,6 +10,8 @@ class Converters {
     private val moshi = Moshi.Builder().add(KotlinJsonAdapterFactory()).build()
     private val menuItemListType = Types.newParameterizedType(List::class.java, MenuItem::class.java)
     private val adapter = moshi.adapter<List<MenuItem>>(menuItemListType)
+    private val stringListType = Types.newParameterizedType(List::class.java, String::class.java)
+    private val stringListAdapter = moshi.adapter<List<String>>(stringListType)
 
     @TypeConverter
     fun fromMenuItemList(value: List<MenuItem>?): String? {
@@ -20,6 +22,20 @@ class Converters {
     fun toMenuItemList(value: String?): List<MenuItem>? {
         try {
             return value?.let { adapter.fromJson(it) }
+        } catch (e: Exception) {
+            return emptyList()
+        }
+    }
+
+    @TypeConverter
+    fun fromStringList(value: List<String>?): String? {
+        return value?.let { stringListAdapter.toJson(it) }
+    }
+
+    @TypeConverter
+    fun toStringList(value: String?): List<String>? {
+        try {
+            return value?.let { stringListAdapter.fromJson(it) }
         } catch (e: Exception) {
             return emptyList()
         }

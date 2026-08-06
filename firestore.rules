@@ -19,6 +19,18 @@ service cloud.firestore {
       return isAuthenticated() &&
         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
     }
+
+    // A restaurant's owner (by UID) or an extra staff member the owner
+    // added (by email, since we can't look up a UID from an email
+    // client-side). Emails are stored lowercase and compared lowercase
+    // so casing differences don't silently lock someone out.
+    function isRestaurantOwnerOrStaff(restaurantId) {
+      let r = get(/databases/$(database)/documents/restaurants/$(restaurantId)).data;
+      return isAuthenticated() && (
+        r.ownerUserId == request.auth.uid ||
+        (request.auth.token.email != null && request.auth.token.email.lower() in r.staffEmails)
+      );
+    }
     
     // ==================== USERS ====================
     
@@ -50,9 +62,17 @@ service cloud.firestore {
       // Only authenticated users can list restaurants
       allow list: if isAuthenticated();
       
-      // Restaurant owners can update their own restaurants
-      allow update: if isAuthenticated() && 
-        resource.data.ownerUserId == request.auth.uid;
+      // Restaurant owners can update anything on their own restaurant.
+      // Staff (added by the owner via staffEmails) can update everything
+      // except who owns the restaurant or who else has staff access —
+      // only the owner manages that.
+      allow update: if isAuthenticated() && (
+        resource.data.ownerUserId == request.auth.uid ||
+        (
+          isRestaurantOwnerOrStaff(restaurantId) &&
+          !request.resource.data.diff(resource.data).affectedKeys().hasAny(['ownerUserId', 'staffEmails'])
+        )
+      );
       
       // Admin can create/update/delete any restaurant
       allow create, update, delete: if isAdmin();
@@ -64,15 +84,15 @@ service cloud.firestore {
       // Anyone can read menu items (public menu viewing)
       allow read: if resource.data.isAvailable == true;
       
-      // Restaurant owners can manage their menu items
+      // Restaurant owners and their staff can manage menu items
       allow create: if isAuthenticated() && 
-        exists(/databases/$(database)/documents/restaurants/$(resource.data.restaurantId)) &&
-        get(/databases/$(database)/documents/restaurants/$(resource.data.restaurantId)).data.ownerUserId == request.auth.uid;
+        exists(/databases/$(database)/documents/restaurants/$(request.resource.data.restaurantId)) &&
+        isRestaurantOwnerOrStaff(request.resource.data.restaurantId);
       
       allow update, delete: if isAuthenticated() && 
         resource.data.restaurantId != null &&
         exists(/databases/$(database)/documents/restaurants/$(resource.data.restaurantId)) &&
-        get(/databases/$(database)/documents/restaurants/$(resource.data.restaurantId)).data.ownerUserId == request.auth.uid;
+        isRestaurantOwnerOrStaff(resource.data.restaurantId);
       
       // Admin can manage all menu items
       allow write: if isAdmin();

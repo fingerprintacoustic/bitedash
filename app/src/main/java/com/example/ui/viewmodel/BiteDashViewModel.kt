@@ -46,7 +46,8 @@ sealed interface UserProfile {
     data class RestaurantOwner(
         val restaurantId: String, 
         val restaurantName: String,
-        val firebaseUid: String = "" // Firebase Auth UID when authenticated
+        val firebaseUid: String = "", // Firebase Auth UID when authenticated
+        val isAdminOverride: Boolean = false // true when an admin opened this dashboard on the owner's behalf, not the owner themselves
     ) : UserProfile
     data class Driver(
         val driverId: String, 
@@ -302,6 +303,12 @@ viewModelScope.launch {
     fun approveRestaurant(restaurantId: String) {
         viewModelScope.launch {
             firestoreService.updateRestaurantField(restaurantId, "isApproved", true)
+        }
+    }
+
+    fun updateRestaurantStaff(restaurantId: String, staffEmails: List<String>) {
+        viewModelScope.launch {
+            firestoreService.updateRestaurantField(restaurantId, "staffEmails", staffEmails)
         }
     }
 

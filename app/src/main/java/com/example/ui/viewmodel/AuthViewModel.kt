@@ -622,6 +622,13 @@ class AuthViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     /**
+     * Get current Firebase user's email, if any (phone-only accounts have none).
+     */
+    fun getCurrentUserEmail(): String? {
+        return authService.getCurrentUser()?.email
+    }
+
+    /**
      * Check if user is authenticated.
      */
     fun isAuthenticated(): Boolean {

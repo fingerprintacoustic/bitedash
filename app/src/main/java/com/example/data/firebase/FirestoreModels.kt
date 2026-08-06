@@ -65,6 +65,7 @@ data class FirestoreRestaurant(
     // for every restaurant) checked outside Firebase Auth entirely — that
     // was a real backdoor and has been removed in favor of this.
     val ownerUserId: String = "", // Reference to users collection
+    val staffEmails: List<String> = emptyList(), // Extra accounts (by email) the owner has granted dashboard access to
     val isApproved: Boolean = true, // false = pending admin review, shown to customers as "Coming Soon"
     // Menu reference
     val menuItemIds: List<String> = emptyList(),

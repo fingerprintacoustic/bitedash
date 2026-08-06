@@ -2075,6 +2075,39 @@ fun AdminPortalOverlay(
                                                         verticalAlignment = Alignment.CenterVertically,
                                                         horizontalArrangement = Arrangement.spacedBy(4.dp)
                                                     ) {
+                                                        var showOverrideConfirm by remember { mutableStateOf(false) }
+                                                        IconButton(
+                                                            onClick = { showOverrideConfirm = true },
+                                                            modifier = Modifier.testTag("admin_manage_rest_${rest.id}")
+                                                        ) {
+                                                            Icon(
+                                                                imageVector = Icons.Default.Storefront,
+                                                                contentDescription = "Manage as Owner",
+                                                                tint = MaterialTheme.colorScheme.primary
+                                                            )
+                                                        }
+                                                        if (showOverrideConfirm) {
+                                                            AlertDialog(
+                                                                onDismissRequest = { showOverrideConfirm = false },
+                                                                title = { Text("Manage \"${rest.name}\" as admin?") },
+                                                                text = {
+                                                                    Text("You'll be able to edit their menu and manage their orders on their behalf. This is meant as a safety net — for example, if the owner and their staff are unavailable. Changes are real and immediate.")
+                                                                },
+                                                                confirmButton = {
+                                                                    TextButton(onClick = {
+                                                                        showOverrideConfirm = false
+                                                                        viewModel.setProfile(UserProfile.RestaurantOwner(rest.id, rest.name, isAdminOverride = true))
+                                                                    }) {
+                                                                        Text("Continue")
+                                                                    }
+                                                                },
+                                                                dismissButton = {
+                                                                    TextButton(onClick = { showOverrideConfirm = false }) {
+                                                                        Text("Cancel")
+                                                                    }
+                                                                }
+                                                            )
+                                                        }
                                                         if (!rest.isApproved) {
                                                             IconButton(
                                                                 onClick = { viewModel.approveRestaurant(rest.id) },
@@ -3223,7 +3256,11 @@ fun RoleSelectionGate(
                     // "password", which was a real backdoor into any
                     // restaurant's owner dashboard for anyone who knew it.
                     val currentUid = authViewModel?.getCurrentUserId()
-                    val myRestaurant = restaurants.find { it.ownerUserId == currentUid && !currentUid.isNullOrBlank() }
+                    val currentEmail = authViewModel?.getCurrentUserEmail()
+                    val myRestaurant = restaurants.find {
+                        (it.ownerUserId == currentUid && !currentUid.isNullOrBlank()) ||
+                        (!currentEmail.isNullOrBlank() && it.staffEmails.any { e -> e.equals(currentEmail, ignoreCase = true) })
+                    }
 
                     when {
                         currentUserRole != UserRole.RESTAURANT -> {
@@ -3666,6 +3703,24 @@ fun RestaurantOwnerDashboard(
                 .fillMaxSize()
                 .padding(innerPadding)
         ) {
+            if (owner.isAdminOverride) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(Color(0xFFFEE2E2))
+                        .padding(horizontal = 16.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Icon(Icons.Default.Warning, contentDescription = null, tint = Color(0xFFB91C1C), modifier = Modifier.size(18.dp))
+                    Text(
+                        "Admin Override — you're managing \"${owner.restaurantName}\" on the owner's behalf. Changes here are real and immediate.",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFF7F1D1D)
+                    )
+                }
+            }
             if (restaurant?.isApproved == false) {
                 Row(
                     modifier = Modifier
@@ -3748,6 +3803,100 @@ fun RestaurantOwnerDashboard(
                                     Spacer(modifier = Modifier.width(4.dp))
                                     Text("Manage Menu Logs", fontSize = 12.sp)
                                 }
+                            }
+                        }
+
+                        // Staff Access — extra accounts (by email) who can manage this
+                        // restaurant's dashboard alongside the owner.
+                        item {
+                            var showStaffDialog by remember { mutableStateOf(false) }
+                            Card(
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(16.dp),
+                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+                            ) {
+                                Column(modifier = Modifier.padding(16.dp)) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Column {
+                                            Text("Staff Access", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium)
+                                            Text(
+                                                if (restaurant?.staffEmails.isNullOrEmpty()) "No extra staff added" else "${restaurant?.staffEmails?.size} staff member(s)",
+                                                fontSize = 12.sp,
+                                                color = Color.Gray
+                                            )
+                                        }
+                                        TextButton(onClick = { showStaffDialog = true }) {
+                                            Text("Manage")
+                                        }
+                                    }
+                                }
+                            }
+
+                            if (showStaffDialog && restaurant != null) {
+                                var newStaffEmail by remember { mutableStateOf("") }
+                                var staffList by remember(restaurant.staffEmails) { mutableStateListOf(*restaurant.staffEmails.toTypedArray()) }
+                                AlertDialog(
+                                    onDismissRequest = { showStaffDialog = false },
+                                    title = { Text("Staff Access") },
+                                    text = {
+                                        Column {
+                                            Text(
+                                                "Add a staff member's email so they can manage this restaurant's menu and orders using their own account.",
+                                                fontSize = 12.sp,
+                                                color = Color.Gray
+                                            )
+                                            Spacer(modifier = Modifier.height(12.dp))
+                                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                                OutlinedTextField(
+                                                    value = newStaffEmail,
+                                                    onValueChange = { newStaffEmail = it },
+                                                    label = { Text("Email") },
+                                                    modifier = Modifier.weight(1f),
+                                                    singleLine = true
+                                                )
+                                                IconButton(onClick = {
+                                                    val trimmed = newStaffEmail.trim().lowercase()
+                                                    if (trimmed.isNotEmpty() && !staffList.any { it.equals(trimmed, ignoreCase = true) }) {
+                                                        staffList.add(trimmed)
+                                                        newStaffEmail = ""
+                                                    }
+                                                }) {
+                                                    Icon(Icons.Default.Add, contentDescription = "Add")
+                                                }
+                                            }
+                                            Spacer(modifier = Modifier.height(8.dp))
+                                            staffList.forEach { email ->
+                                                Row(
+                                                    modifier = Modifier.fillMaxWidth(),
+                                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                                    verticalAlignment = Alignment.CenterVertically
+                                                ) {
+                                                    Text(email, fontSize = 13.sp)
+                                                    IconButton(onClick = { staffList.remove(email) }) {
+                                                        Icon(Icons.Default.Close, contentDescription = "Remove", modifier = Modifier.size(16.dp))
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    },
+                                    confirmButton = {
+                                        TextButton(onClick = {
+                                            viewModel.updateRestaurantStaff(restaurant.id, staffList.toList())
+                                            showStaffDialog = false
+                                        }) {
+                                            Text("Save")
+                                        }
+                                    },
+                                    dismissButton = {
+                                        TextButton(onClick = { showStaffDialog = false }) {
+                                            Text("Cancel")
+                                        }
+                                    }
+                                )
                             }
                         }
 

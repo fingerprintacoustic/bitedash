@@ -25,6 +25,7 @@ fun RestaurantEntity.toFirestoreRestaurant(): FirestoreRestaurant {
         imageKeyword = imageKeyword,
         displayOrder = displayOrder,
         ownerUserId = ownerUserId,
+        staffEmails = staffEmails,
         isApproved = isApproved,
         menuItemIds = menuItems.map { it.id },
         isActive = true
@@ -67,6 +68,7 @@ fun FirestoreRestaurant.toRoomEntity(menuItems: List<MenuItem>): RestaurantEntit
         imageKeyword = imageKeyword,
         displayOrder = displayOrder,
         ownerUserId = ownerUserId,
+        staffEmails = staffEmails,
         isApproved = isApproved,
         menuItems = menuItems
     )
