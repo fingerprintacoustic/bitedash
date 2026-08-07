@@ -3838,7 +3838,7 @@ fun RestaurantOwnerDashboard(
 
                             if (showStaffDialog && restaurant != null) {
                                 var newStaffEmail by remember { mutableStateOf("") }
-                                var staffList by remember(restaurant.staffEmails) { mutableStateListOf(*restaurant.staffEmails.toTypedArray()) }
+                                val staffList = remember(restaurant.staffEmails) { mutableStateListOf(*restaurant.staffEmails.toTypedArray()) }
                                 AlertDialog(
                                     onDismissRequest = { showStaffDialog = false },
                                     title = { Text("Staff Access") },
