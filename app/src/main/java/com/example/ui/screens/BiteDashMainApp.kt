@@ -2140,14 +2140,24 @@ fun AdminPortalOverlay(
                                                                 tint = MaterialTheme.colorScheme.primary
                                                             )
                                                         }
+                                                        var showDeleteConfirm by remember { mutableStateOf(false) }
                                                         IconButton(
-                                                            onClick = { viewModel.removeRestaurant(rest.id) },
+                                                            onClick = { showDeleteConfirm = true },
                                                             modifier = Modifier.testTag("delete_rest_${rest.id}")
                                                         ) {
                                                             Icon(
                                                                 imageVector = Icons.Default.Delete,
                                                                 contentDescription = "Delete Restaurant",
                                                                 tint = MaterialTheme.colorScheme.error
+                                                            )
+                                                        }
+                                                        if (showDeleteConfirm) {
+                                                            DeleteWithSafetyCheckDialog(
+                                                                itemLabel = "restaurant",
+                                                                itemName = rest.name,
+                                                                checkActiveOrders = { viewModel.getActiveOrderCountForRestaurant(rest.id) },
+                                                                onConfirmDelete = { viewModel.removeRestaurant(rest.id) },
+                                                                onDismiss = { showDeleteConfirm = false }
                                                             )
                                                         }
                                                     }
@@ -2206,14 +2216,24 @@ fun AdminPortalOverlay(
                                                         Text(d.name, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium)
                                                         Text("Phone: ${d.phone} • Vehicle: ${d.vehicle}", fontSize = 12.sp, color = Color.Gray)
                                                     }
+                                                    var showDeleteConfirm by remember { mutableStateOf(false) }
                                                     IconButton(
-                                                        onClick = { viewModel.removeDriver(d.id) },
+                                                        onClick = { showDeleteConfirm = true },
                                                         modifier = Modifier.testTag("delete_driver_${d.id}")
                                                     ) {
                                                         Icon(
                                                             imageVector = Icons.Default.Delete,
                                                             contentDescription = "Delete Rider",
                                                             tint = MaterialTheme.colorScheme.error
+                                                        )
+                                                    }
+                                                    if (showDeleteConfirm) {
+                                                        DeleteWithSafetyCheckDialog(
+                                                            itemLabel = "driver",
+                                                            itemName = d.name,
+                                                            checkActiveOrders = { viewModel.getActiveOrderCountForDriver(d.id) },
+                                                            onConfirmDelete = { viewModel.removeDriver(d.id) },
+                                                            onDismiss = { showDeleteConfirm = false }
                                                         )
                                                     }
                                                 }
@@ -2796,6 +2816,74 @@ fun AdminPortalOverlay(
             }
         }
     }
+}
+
+// Confirms a destructive delete and blocks it if the restaurant/driver
+// has orders still in progress — avoids removing someone mid-delivery
+// or mid-order. checkActiveOrders is a one-shot suspend check run when
+// the dialog opens, not a live subscription.
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun DeleteWithSafetyCheckDialog(
+    itemLabel: String, // "restaurant" or "driver"
+    itemName: String,
+    checkActiveOrders: suspend () -> Int,
+    onConfirmDelete: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    var state by remember { mutableStateOf("checking") } // checking, clear, blocked, checkFailed
+    var activeCount by remember { mutableStateOf(0) }
+
+    LaunchedEffect(Unit) {
+        val count = checkActiveOrders()
+        activeCount = count
+        state = when {
+            count < 0 -> "checkFailed"
+            count > 0 -> "blocked"
+            else -> "clear"
+        }
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Remove this $itemLabel?") },
+        text = {
+            when (state) {
+                "checking" -> Row(verticalAlignment = Alignment.CenterVertically) {
+                    CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Text("Checking for active orders…", fontSize = 13.sp)
+                }
+                "blocked" -> Text(
+                    "\"$itemName\" has $activeCount order(s) still in progress. Wait until those are completed or cancelled before removing.",
+                    fontSize = 13.sp
+                )
+                "checkFailed" -> Text(
+                    "Couldn't check \"$itemName\" for active orders — you can try again, or delete anyway if you're sure.",
+                    fontSize = 13.sp
+                )
+                else -> Text("Remove \"$itemName\"? This can't be undone.", fontSize = 13.sp)
+            }
+        },
+        confirmButton = {
+            if (state == "clear" || state == "checkFailed") {
+                TextButton(onClick = {
+                    onConfirmDelete()
+                    onDismiss()
+                }) {
+                    Text(
+                        if (state == "checkFailed") "Delete Anyway" else "Delete",
+                        color = MaterialTheme.colorScheme.error
+                    )
+                }
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(if (state == "blocked") "Close" else "Cancel")
+            }
+        }
+    )
 }
 
 @OptIn(ExperimentalMaterial3Api::class)

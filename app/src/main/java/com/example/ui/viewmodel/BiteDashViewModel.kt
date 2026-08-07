@@ -294,6 +294,29 @@ viewModelScope.launch {
         }
     }
 
+    private val terminalOrderStatuses = setOf("COMPLETED", "REJECTED", "CANCELLED")
+
+    // Returns the count of orders still in progress, or -1 if the check
+    // itself failed (e.g. no connectivity) — the caller decides how to
+    // handle that case rather than silently treating it as "0 active".
+    suspend fun getActiveOrderCountForRestaurant(restaurantId: String): Int {
+        return try {
+            firestoreService.getRestaurantOrdersFlow(restaurantId).first()
+                .count { it.status !in terminalOrderStatuses }
+        } catch (e: Exception) {
+            -1
+        }
+    }
+
+    suspend fun getActiveOrderCountForDriver(driverId: String): Int {
+        return try {
+            firestoreService.getDriverOrdersFlow(driverId).first()
+                .count { it.status !in terminalOrderStatuses }
+        } catch (e: Exception) {
+            -1
+        }
+    }
+
     fun removeRestaurant(restaurantId: String) {
         viewModelScope.launch {
             firestoreService.deleteRestaurant(restaurantId)
