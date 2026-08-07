@@ -12,6 +12,7 @@ import com.example.data.repository.RestaurantRepository
 import com.example.data.repository.DriverRepository
 import com.example.data.firebase.FirestoreAdminSettings
 import com.example.data.firebase.FirestoreDriver
+import com.example.data.firebase.FirestoreOrder
 import com.example.data.firebase.FirestoreService
 import com.example.data.firebase.toFirestoreDriver
 import com.example.data.firebase.toFirestoreMenuItem
@@ -314,6 +315,22 @@ viewModelScope.launch {
                 .count { it.status !in terminalOrderStatuses }
         } catch (e: Exception) {
             -1
+        }
+    }
+
+    // Cancels a real order — the only way to close out a stuck order,
+    // since orders can never be deleted (audit trail, enforced by
+    // firestore.rules regardless of role). This is what actually
+    // unblocks a restaurant/driver delete that's blocked on an active order.
+    // Live feed of real orders still in progress, for the admin Orders
+    // tab — the only place a stuck order can be cancelled (not deleted;
+    // orders can never be deleted, see firestore.rules).
+    val activeOrdersForAdmin: StateFlow<List<FirestoreOrder>> = firestoreService.getActiveOrdersFlow()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    fun cancelOrder(orderId: String) {
+        viewModelScope.launch {
+            firestoreService.updateOrderStatus(orderId, "CANCELLED")
         }
     }
 

@@ -2008,6 +2008,12 @@ fun AdminPortalOverlay(
                         text = { Text("Payouts", fontSize = 13.sp) },
                         modifier = Modifier.testTag("admin_tab_payouts")
                     )
+                    Tab(
+                        selected = activeSubTab == 5,
+                        onClick = { activeSubTab = 5 },
+                        text = { Text("Orders", fontSize = 13.sp) },
+                        modifier = Modifier.testTag("admin_tab_orders")
+                    )
                 }
 
                 Spacer(modifier = Modifier.height(12.dp))
@@ -2471,6 +2477,10 @@ fun AdminPortalOverlay(
                         4 -> {
                             // Payouts Summary
                             PayoutsSummaryTab(viewModel = viewModel)
+                        }
+                        5 -> {
+                            // Real order management — cancel a stuck order
+                            AdminOrdersTab(viewModel = viewModel)
                         }
                     }
                 }
@@ -4459,6 +4469,90 @@ private fun PaynowSettingsTab(viewModel: BiteDashViewModel) {
         }
     }
 
+}
+
+@Composable
+private fun AdminOrdersTab(viewModel: BiteDashViewModel) {
+    val activeOrders by viewModel.activeOrdersForAdmin.collectAsStateWithLifecycle()
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(vertical = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        Text(
+            "Orders in progress",
+            fontWeight = FontWeight.Bold,
+            style = MaterialTheme.typography.bodyMedium
+        )
+        Text(
+            "Orders can't be deleted, but you can cancel one here — mainly useful for unblocking a restaurant or driver removal that's stuck on an abandoned order.",
+            fontSize = 11.sp,
+            color = Color.Gray
+        )
+
+        if (activeOrders.isEmpty()) {
+            Box(modifier = Modifier.fillMaxWidth().padding(top = 24.dp), contentAlignment = Alignment.Center) {
+                Text("No orders currently in progress.", color = Color.Gray, fontSize = 13.sp)
+            }
+        } else {
+            activeOrders.forEach { order ->
+                var showCancelConfirm by remember(order.id) { mutableStateOf(false) }
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(14.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(order.restaurantName.ifBlank { "Unknown restaurant" }, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                            Text(order.customerName.ifBlank { "Unknown customer" }, fontSize = 12.sp, color = Color.Gray)
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                Badge(containerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f), contentColor = MaterialTheme.colorScheme.primary) {
+                                    Text(order.status, modifier = Modifier.padding(horizontal = 6.dp, vertical = 1.dp), fontSize = 9.sp)
+                                }
+                                Text("$${String.format(Locale.US, "%.2f", order.totalCost)}", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                        TextButton(onClick = { showCancelConfirm = true }) {
+                            Text("Cancel", color = MaterialTheme.colorScheme.error)
+                        }
+                    }
+                }
+                if (showCancelConfirm) {
+                    AlertDialog(
+                        onDismissRequest = { showCancelConfirm = false },
+                        title = { Text("Cancel this order?") },
+                        text = {
+                            Text(
+                                "This marks the order from \"${order.restaurantName}\" as cancelled. It stays in the records — orders are never deleted — but it'll no longer block that restaurant or driver from being removed.",
+                                fontSize = 13.sp
+                            )
+                        },
+                        confirmButton = {
+                            TextButton(onClick = {
+                                viewModel.cancelOrder(order.id)
+                                showCancelConfirm = false
+                            }) {
+                                Text("Cancel Order", color = MaterialTheme.colorScheme.error)
+                            }
+                        },
+                        dismissButton = {
+                            TextButton(onClick = { showCancelConfirm = false }) {
+                                Text("Never Mind")
+                            }
+                        }
+                    )
+                }
+            }
+        }
+    }
 }
 
 @Composable
