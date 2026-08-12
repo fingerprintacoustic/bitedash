@@ -153,7 +153,7 @@ fun SplashScreen(
                 shape = RoundedCornerShape(20.dp)
             ) {
                 Text(
-                    text = "Version 4.2",
+                    text = "Version ${com.example.BuildConfig.VERSION_NAME}",
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
                     style = MaterialTheme.typography.labelMedium,
                     color = Color.White.copy(alpha = 0.8f)
