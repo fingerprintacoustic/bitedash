@@ -250,23 +250,45 @@ class BiteDashViewModel(application: Application) : AndroidViewModel(application
 // changes, so admin edits made on one device (or by a restaurant/driver
 // signing up) show up on everyone else's device too, not just the one
 // that made the change.
+//
+// These run automatically for every authenticated session, so a single
+// bad document or transient Firestore error here must never crash the
+// app — it's wrapped so a failure just skips that update instead of
+// bringing down the whole session.
 viewModelScope.launch {
-    firestoreService.getRestaurantsFlow().collect { firestoreRestaurants ->
-        val entities = firestoreRestaurants.map { fr ->
-            val menuItems = try {
-                firestoreService.getMenuItemsFlow(fr.id).first().map { it.toMenuItem() }
+    try {
+        firestoreService.getRestaurantsFlow().collect { firestoreRestaurants ->
+            try {
+                val entities = firestoreRestaurants.map { fr ->
+                    val menuItems = try {
+                        firestoreService.getMenuItemsFlow(fr.id).first().map { it.toMenuItem() }
+                    } catch (e: Exception) {
+                        emptyList()
+                    }
+                    fr.toRoomEntity(menuItems)
+                }
+                restaurantRepo.replaceAll(entities)
             } catch (e: Exception) {
-                emptyList()
+                // Skip this update; keep listening for the next one.
             }
-            fr.toRoomEntity(menuItems)
         }
-        restaurantRepo.replaceAll(entities)
+    } catch (e: Exception) {
+        // The listener itself failed to start (e.g. transient auth/network
+        // issue) — the app continues with whatever Room already has cached.
     }
 }
 
 viewModelScope.launch {
-    firestoreService.getDriversFlow().collect { firestoreDrivers ->
-        driverRepo.replaceAll(firestoreDrivers.map { it.toRoomEntity() })
+    try {
+        firestoreService.getDriversFlow().collect { firestoreDrivers ->
+            try {
+                driverRepo.replaceAll(firestoreDrivers.map { it.toRoomEntity() })
+            } catch (e: Exception) {
+                // Skip this update; keep listening for the next one.
+            }
+        }
+    } catch (e: Exception) {
+        // Listener failed to start — continue with cached data.
     }
 }
 
