@@ -12,7 +12,19 @@ import com.example.data.entity.OrderEntity
 import com.example.data.entity.RestaurantEntity
 import com.example.data.entity.DriverEntity
 
-@Database(entities = [OrderEntity::class, RestaurantEntity::class, DriverEntity::class], version = 7, exportSchema = false)
+// version bumped 7 -> 8: RestaurantEntity gained ownerUserId, staffEmails,
+// and isApproved across several commits after version was last set here.
+// Room computes a schema "identity hash" from the entity classes at build
+// time; when that changes without a matching version bump, Room can't tell
+// it needs to migrate — it just finds a mismatch between what it expects
+// for "version 7" and what's actually on disk, and throws
+// IllegalStateException("Room cannot verify the data integrity...") on
+// every single app open, before any UI even renders. This is what caused
+// the crash-within-seconds reported by multiple testers.
+// fallbackToDestructiveMigration() (below) means this bump is enough on
+// its own — no explicit Migration needed, Room just rebuilds the local
+// cache fresh, which is fine since it only ever mirrors Firestore anyway.
+@Database(entities = [OrderEntity::class, RestaurantEntity::class, DriverEntity::class], version = 8, exportSchema = false)
 @TypeConverters(Converters::class)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun orderDao(): OrderDao
