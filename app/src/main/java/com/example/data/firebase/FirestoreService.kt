@@ -392,12 +392,24 @@ class FirestoreService {
     }
 
     fun getActiveOrdersFlow(): Flow<List<FirestoreOrder>> {
+        // Firestore only allows one inequality (!=) filter per query — two
+        // whereNotEqualTo() calls on the same field throws
+        // IllegalArgumentException at query-build time, synchronously,
+        // before any data is even fetched. whereNotIn expresses the same
+        // "status is neither of these" condition as a single valid clause.
+        //
+        // Sorting is done client-side rather than via orderBy(), since
+        // Firestore requires an orderBy field used alongside whereNotIn to
+        // match the filtered field (or a composite index) — sorting here
+        // avoids that requirement and gives a more useful newest-first
+        // order than sorting by status would.
         return db.collection(COLLECTION_ORDERS)
-            .whereNotEqualTo("status", "COMPLETED")
-            .whereNotEqualTo("status", "CANCELLED")
-            .orderBy("createdAt", Query.Direction.DESCENDING)
+            .whereNotIn("status", listOf("COMPLETED", "CANCELLED"))
             .snapshots()
-            .map { snapshot -> snapshot.toObjects(FirestoreOrder::class.java) }
+            .map { snapshot ->
+                snapshot.toObjects(FirestoreOrder::class.java)
+                    .sortedByDescending { it.createdAt?.seconds ?: 0 }
+            }
     }
 
     suspend fun getOrder(orderId: String): FirestoreOrder? {

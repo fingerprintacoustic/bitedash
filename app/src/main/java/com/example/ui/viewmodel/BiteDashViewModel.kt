@@ -28,6 +28,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -347,7 +348,20 @@ viewModelScope.launch {
     // Live feed of real orders still in progress, for the admin Orders
     // tab — the only place a stuck order can be cancelled (not deleted;
     // orders can never be deleted, see firestore.rules).
-    val activeOrdersForAdmin: StateFlow<List<FirestoreOrder>> = firestoreService.getActiveOrdersFlow()
+    //
+    // Wrapped defensively: getActiveOrdersFlow() previously threw
+    // synchronously (an invalid double !=  filter — since fixed) right
+    // here during ViewModel construction, crashing the app on every
+    // authenticated session before any UI even rendered. Both the
+    // construction call and the flow's own collection are now guarded so
+    // a future Firestore error here degrades to an empty list instead of
+    // taking down the whole app again.
+    val activeOrdersForAdmin: StateFlow<List<FirestoreOrder>> = try {
+        firestoreService.getActiveOrdersFlow()
+    } catch (e: Exception) {
+        kotlinx.coroutines.flow.flowOf(emptyList())
+    }
+        .catch { emit(emptyList()) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     fun cancelOrder(orderId: String) {
