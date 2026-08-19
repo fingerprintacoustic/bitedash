@@ -245,51 +245,59 @@ class BiteDashViewModel(application: Application) : AndroidViewModel(application
             }
         }
 
-// Restaurants and drivers are shared across every device via Firestore.
-// Room is kept as a local cache only — these listeners run for the life
-// of the app and mirror Firestore into Room every time the cloud data
-// changes, so admin edits made on one device (or by a restaurant/driver
-// signing up) show up on everyone else's device too, not just the one
-// that made the change.
-//
 // These run automatically for every authenticated session, so a single
 // bad document or transient Firestore error here must never crash the
-// app — it's wrapped so a failure just skips that update instead of
-// bringing down the whole session.
+// app — and, just as important, must never silently block every OTHER
+// restaurant/driver from syncing either. Each item is converted inside
+// its own try/catch now, so one bad document is skipped on its own
+// instead of blanking the whole list for everyone. Failures are logged
+// so a future issue shows up in logcat instead of needing guesswork.
 viewModelScope.launch {
     try {
         firestoreService.getRestaurantsFlow().collect { firestoreRestaurants ->
-            try {
-                val entities = firestoreRestaurants.map { fr ->
+            val entities = firestoreRestaurants.mapNotNull { fr ->
+                try {
                     val menuItems = try {
                         firestoreService.getMenuItemsFlow(fr.id).first().map { it.toMenuItem() }
                     } catch (e: Exception) {
                         emptyList()
                     }
                     fr.toRoomEntity(menuItems)
+                } catch (e: Exception) {
+                    android.util.Log.e("BiteDashSync", "Skipped restaurant ${fr.id}: ${e.message}", e)
+                    null
                 }
+            }
+            try {
                 restaurantRepo.replaceAll(entities)
             } catch (e: Exception) {
-                // Skip this update; keep listening for the next one.
+                android.util.Log.e("BiteDashSync", "Failed to save restaurants to local cache: ${e.message}", e)
             }
         }
     } catch (e: Exception) {
-        // The listener itself failed to start (e.g. transient auth/network
-        // issue) — the app continues with whatever Room already has cached.
+        android.util.Log.e("BiteDashSync", "Restaurant listener failed to start: ${e.message}", e)
     }
 }
 
 viewModelScope.launch {
     try {
         firestoreService.getDriversFlow().collect { firestoreDrivers ->
+            val entities = firestoreDrivers.mapNotNull { fd ->
+                try {
+                    fd.toRoomEntity()
+                } catch (e: Exception) {
+                    android.util.Log.e("BiteDashSync", "Skipped driver ${fd.id}: ${e.message}", e)
+                    null
+                }
+            }
             try {
-                driverRepo.replaceAll(firestoreDrivers.map { it.toRoomEntity() })
+                driverRepo.replaceAll(entities)
             } catch (e: Exception) {
-                // Skip this update; keep listening for the next one.
+                android.util.Log.e("BiteDashSync", "Failed to save drivers to local cache: ${e.message}", e)
             }
         }
     } catch (e: Exception) {
-        // Listener failed to start — continue with cached data.
+        android.util.Log.e("BiteDashSync", "Driver listener failed to start: ${e.message}", e)
     }
 }
 
