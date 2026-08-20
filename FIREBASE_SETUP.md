@@ -54,9 +54,16 @@ firebase deploy --only firestore:rules
 
 ---
 
-## Step 3: Create Composite Indexes (Optional but Recommended)
+## Step 3: Create Composite Indexes (Required for order queries)
 
-For optimal query performance, create these composite indexes:
+> **Important:** these indexes were previously documented as "optional", but
+> dropping them breaks live queries rather than just slowing them down — a
+> query that needs a missing composite index fails with FAILED_PRECONDITION
+> and delivers nothing. The restaurants/menu_items index is no longer needed
+> (the app sorts those lists client-side since v6.14), but the `orders`
+> indexes below are still REQUIRED for the app's order queries to work.
+
+Create these composite indexes:
 
 ### Via Firebase Console:
 1. Go to **Firestore Database** → **Indexes** tab

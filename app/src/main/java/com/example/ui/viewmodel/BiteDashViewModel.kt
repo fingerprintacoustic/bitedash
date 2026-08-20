@@ -258,7 +258,9 @@ viewModelScope.launch {
             val entities = firestoreRestaurants.mapNotNull { fr ->
                 try {
                     val menuItems = try {
-                        firestoreService.getMenuItemsFlow(fr.id).first().map { it.toMenuItem() }
+                        firestoreService.getMenuItemsFlow(fr.id).first()
+                            .map { it.toMenuItem() }
+                            .sortedWith(compareBy({ it.category }, { it.name }))
                     } catch (e: Exception) {
                         emptyList()
                     }
