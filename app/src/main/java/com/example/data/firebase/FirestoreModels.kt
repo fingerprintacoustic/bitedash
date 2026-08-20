@@ -2,6 +2,7 @@ package com.example.data.firebase
 
 import com.google.firebase.Timestamp
 import com.google.firebase.firestore.DocumentId
+import com.google.firebase.firestore.PropertyName
 import com.google.firebase.firestore.ServerTimestamp
 
 /**
@@ -42,7 +43,8 @@ data class FirestoreUser(
     @ServerTimestamp
     val updatedAt: Timestamp? = null,
     // Preferences
-    val isActive: Boolean = true
+    @get:PropertyName("isActive") @set:PropertyName("isActive")
+    var isActive: Boolean = true
 )
 
 // ==================== RESTAURANT COLLECTION ====================
@@ -66,7 +68,8 @@ data class FirestoreRestaurant(
     // was a real backdoor and has been removed in favor of this.
     val ownerUserId: String = "", // Reference to users collection
     val staffEmails: List<String> = emptyList(), // Extra accounts (by email) the owner has granted dashboard access to
-    val isApproved: Boolean = true, // false = pending admin review, shown to customers as "Coming Soon"
+    @get:PropertyName("isApproved") @set:PropertyName("isApproved")
+    var isApproved: Boolean = true, // false = pending admin review, shown to customers as "Coming Soon"
     // Menu reference
     val menuItemIds: List<String> = emptyList(),
     // Payout info
@@ -78,7 +81,8 @@ data class FirestoreRestaurant(
     val createdAt: Timestamp? = null,
     @ServerTimestamp
     val updatedAt: Timestamp? = null,
-    val isActive: Boolean = true
+    @get:PropertyName("isActive") @set:PropertyName("isActive")
+    var isActive: Boolean = true
 )
 
 // ==================== MENU ITEMS COLLECTION ====================
@@ -91,7 +95,8 @@ data class FirestoreMenuItem(
     val description: String = "",
     val price: Double = 0.0,
     val category: String = "", // Mains, Sides, Drinks, Desserts, etc.
-    val isAvailable: Boolean = true,
+    @get:PropertyName("isAvailable") @set:PropertyName("isAvailable")
+    var isAvailable: Boolean = true,
     val imageUrl: String = "",
     val preparationTime: Int = 15, // in minutes
     // Metadata
@@ -158,7 +163,8 @@ data class FirestoreOrder(
     val paymentRef: String = "",
     val paymentStatus: String = "PENDING", // PENDING, PROCESSING, COMPLETED, FAILED
     // Payout tracking
-    val isSettled: Boolean = false,
+    @get:PropertyName("isSettled") @set:PropertyName("isSettled")
+    var isSettled: Boolean = false,
     val restaurantPayoutAmount: Double = 0.0,
     val driverPayoutAmount: Double = 0.0,
     val platformFee: Double = 0.0,
@@ -225,8 +231,10 @@ data class FirestoreDriver(
     val phone: String = "",
     val vehicle: String = "", // Bicycle, Motorbike, Car
     val userId: String = "", // Firebase Auth UID of the account that owns this driver profile
-    val isAvailable: Boolean = true,
-    val isActive: Boolean = true,
+    @get:PropertyName("isAvailable") @set:PropertyName("isAvailable")
+    var isAvailable: Boolean = true,
+    @get:PropertyName("isActive") @set:PropertyName("isActive")
+    var isActive: Boolean = true,
     // Payout info
     val ecoCashNumber: String = "",
     val oneMoneyNumber: String = "",
@@ -281,7 +289,8 @@ data class FirestoreAdminSettings(
     val innBucksApiKey: String = "",
     val paynowIntegrationId: String = "",
     val paynowIntegrationKey: String = "",
-    val isPayoutAutomationEnabled: Boolean = false,
+    @get:PropertyName("isPayoutAutomationEnabled") @set:PropertyName("isPayoutAutomationEnabled")
+    var isPayoutAutomationEnabled: Boolean = false,
     @ServerTimestamp
     val updatedAt: Timestamp? = null
 )
