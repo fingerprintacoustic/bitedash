@@ -1,12 +1,32 @@
 package com.example.data.firebase
 
 import com.google.firebase.Timestamp
+import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.Query
 import com.google.firebase.firestore.ktx.snapshots
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.tasks.await
+
+// snapshot.toObjects() is all-or-nothing: a single document whose field types
+// don't match the model (e.g. a number saved as a string from the web admin,
+// another client, or a manual Firebase Console edit) throws and kills the
+// ENTIRE listener, freezing the whole list at whatever is in the local cache
+// while the web admin keeps showing everything. Converting document-by-document
+// confines the damage to the one bad document.
+private inline fun <reified T : Any> DocumentSnapshot.toObjectOrNull(collection: String): T? {
+    return try {
+        toObject(T::class.java)
+    } catch (e: Exception) {
+        android.util.Log.e(
+            "BiteDashSync",
+            "Skipping unreadable $collection document $id: ${e.message}",
+            e
+        )
+        null
+    }
+}
 
 /**
  * BiteDash Firestore Service
@@ -136,11 +156,20 @@ class FirestoreService {
     // ==================== RESTAURANT OPERATIONS ====================
 
     fun getRestaurantsFlow(): Flow<List<FirestoreRestaurant>> {
+        // No orderBy here: the local Room cache already sorts by displayOrder.
+        // Combining an equality filter on isActive with orderBy on displayOrder
+        // requires a composite Firestore index — when that index doesn't exist
+        // the listener fails outright (FAILED_PRECONDITION) and never delivers
+        // anything, and orderBy additionally drops any document missing the
+        // field. A single-field filter needs no composite index.
         return db.collection(COLLECTION_RESTAURANTS)
             .whereEqualTo("isActive", true)
-            .orderBy("displayOrder", Query.Direction.ASCENDING)
             .snapshots()
-            .map { snapshot -> snapshot.toObjects(FirestoreRestaurant::class.java) }
+            .map { snapshot ->
+                snapshot.documents.mapNotNull {
+                    it.toObjectOrNull<FirestoreRestaurant>(COLLECTION_RESTAURANTS)
+                }
+            }
     }
 
     fun getRestaurantsFlowByCategory(category: String): Flow<List<FirestoreRestaurant>> {
@@ -212,12 +241,17 @@ class FirestoreService {
     // ==================== MENU ITEM OPERATIONS ====================
 
     fun getMenuItemsFlow(restaurantId: String): Flow<List<FirestoreMenuItem>> {
+        // No orderBy here (see getRestaurantsFlow): equality filters alone only
+        // need the built-in single-field indexes. Callers sort by category.
         return db.collection(COLLECTION_MENU_ITEMS)
             .whereEqualTo("restaurantId", restaurantId)
             .whereEqualTo("isAvailable", true)
-            .orderBy("category")
             .snapshots()
-            .map { snapshot -> snapshot.toObjects(FirestoreMenuItem::class.java) }
+            .map { snapshot ->
+                snapshot.documents.mapNotNull {
+                    it.toObjectOrNull<FirestoreMenuItem>(COLLECTION_MENU_ITEMS)
+                }
+            }
     }
 
     fun getMenuItemsFlowByCategory(category: String): Flow<List<FirestoreMenuItem>> {
@@ -588,7 +622,11 @@ class FirestoreService {
         return db.collection(COLLECTION_DRIVERS)
             .whereEqualTo("isActive", true)
             .snapshots()
-            .map { snapshot -> snapshot.toObjects(FirestoreDriver::class.java) }
+            .map { snapshot ->
+                snapshot.documents.mapNotNull {
+                    it.toObjectOrNull<FirestoreDriver>(COLLECTION_DRIVERS)
+                }
+            }
     }
 
     fun getAvailableDriversFlow(): Flow<List<FirestoreDriver>> {
