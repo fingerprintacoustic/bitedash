@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.data.firebase.FirestoreService
 import com.google.firebase.Timestamp
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -33,6 +34,7 @@ class RestaurantOrderViewModel(
     
     private val _uiState = MutableStateFlow(RestaurantOrderUiState())
     val uiState: StateFlow<RestaurantOrderUiState> = _uiState.asStateFlow()
+    private var ordersListenerJob: Job? = null
     
     init {
         loadOrders()
@@ -41,10 +43,16 @@ class RestaurantOrderViewModel(
     // ==================== ORDER LOADING ====================
     
     /**
-     * Load PAID orders for the restaurant.
+     * Load orders for the restaurant and keep listening for live updates.
+     *
+     * Cancels any previously-running listener first — refreshOrders() used
+     * to call this without cancelling, so every manual refresh stacked
+     * another parallel Firestore listener on top of the one already
+     * running since init{}, rather than replacing it.
      */
     fun loadOrders() {
-        viewModelScope.launch {
+        ordersListenerJob?.cancel()
+        ordersListenerJob = viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true, errorMessage = null) }
             
             try {
@@ -87,7 +95,10 @@ class RestaurantOrderViewModel(
     
     /**
      * Accept an order.
-     * Updates order status to ACCEPTED.
+     * Updates order status to ACCEPTED in Firestore. The live listener in
+     * loadOrders() picks up the change and updates the list — no manual
+     * local mutation here, so there's only ever one place that decides
+     * what the order list looks like.
      */
     fun acceptOrder(orderId: String) {
         viewModelScope.launch {
@@ -100,19 +111,7 @@ class RestaurantOrderViewModel(
                 )
                 
                 if (success) {
-                    // Update local state
-                    _uiState.update { state ->
-                        state.copy(
-                            orders = state.orders.map { order ->
-                                if (order.orderId == orderId) {
-                                    order.copy(status = RestaurantOrderStatus.ACCEPTED)
-                                } else {
-                                    order
-                                }
-                            },
-                            actionInProgress = null
-                        )
-                    }
+                    _uiState.update { it.copy(actionInProgress = null) }
                 } else {
                     _uiState.update {
                         it.copy(
@@ -134,7 +133,9 @@ class RestaurantOrderViewModel(
     
     /**
      * Reject an order.
-     * Updates order status to REJECTED.
+     * Updates order status to REJECTED in Firestore; the live listener
+     * picks up the change (Dashboard/Order Management already filter out
+     * REJECTED orders from their active views).
      */
     fun rejectOrder(orderId: String) {
         viewModelScope.launch {
@@ -147,13 +148,7 @@ class RestaurantOrderViewModel(
                 )
                 
                 if (success) {
-                    // Update local state - remove from list or mark as rejected
-                    _uiState.update { state ->
-                        state.copy(
-                            orders = state.orders.filter { it.orderId != orderId },
-                            actionInProgress = null
-                        )
-                    }
+                    _uiState.update { it.copy(actionInProgress = null) }
                 } else {
                     _uiState.update {
                         it.copy(
@@ -175,7 +170,7 @@ class RestaurantOrderViewModel(
     
     /**
      * Start preparing an accepted order.
-     * Updates order status to PREPARING.
+     * Updates order status to PREPARING in Firestore.
      */
     fun startPreparing(orderId: String) {
         viewModelScope.launch {
@@ -188,18 +183,7 @@ class RestaurantOrderViewModel(
                 )
                 
                 if (success) {
-                    _uiState.update { state ->
-                        state.copy(
-                            orders = state.orders.map { order ->
-                                if (order.orderId == orderId) {
-                                    order.copy(status = RestaurantOrderStatus.PREPARING)
-                                } else {
-                                    order
-                                }
-                            },
-                            actionInProgress = null
-                        )
-                    }
+                    _uiState.update { it.copy(actionInProgress = null) }
                 } else {
                     _uiState.update {
                         it.copy(
@@ -221,7 +205,17 @@ class RestaurantOrderViewModel(
     
     /**
      * Mark an order as ready for pickup.
-     * Updates order status to READY_FOR_PICKUP.
+     * Updates order status to READY_FOR_PICKUP in Firestore.
+     *
+     * This used to also immediately remove the order from the local list
+     * ("Remove from restaurant's view since it's now ready"), racing
+     * against the live listener's own update for the same write. That's
+     * what made an order appear to vanish from both Order Management and
+     * Dashboard until a manual refresh — the document and status were
+     * always correct in Firestore the whole time. The live listener
+     * already reflects READY_FOR_PICKUP correctly (Dashboard shows
+     * "Waiting for Rider Pickup..." for it), so no manual removal is
+     * needed here.
      */
     fun markReadyForPickup(orderId: String) {
         viewModelScope.launch {
@@ -234,13 +228,7 @@ class RestaurantOrderViewModel(
                 )
                 
                 if (success) {
-                    // Remove from restaurant's view since it's now ready
-                    _uiState.update { state ->
-                        state.copy(
-                            orders = state.orders.filter { it.orderId != orderId },
-                            actionInProgress = null
-                        )
-                    }
+                    _uiState.update { it.copy(actionInProgress = null) }
                 } else {
                     _uiState.update {
                         it.copy(
