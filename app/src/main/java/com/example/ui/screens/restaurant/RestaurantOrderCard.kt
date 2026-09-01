@@ -131,6 +131,40 @@ fun RestaurantOrderCard(
 }
 
 /**
+ * Compact status chip shown in the order header, so the current status is
+ * always visible regardless of which action button (if any) is showing —
+ * previously only visible for statuses with no action button, which made
+ * e.g. PREPARING's "Ready for Pickup" action button easy to misread as a
+ * status rather than an action.
+ */
+@Composable
+private fun OrderStatusChip(status: RestaurantOrderStatus) {
+    val (icon, color) = when (status) {
+        RestaurantOrderStatus.ACCEPTED -> Icons.Default.CheckCircle to MaterialTheme.colorScheme.primary
+        RestaurantOrderStatus.REJECTED -> Icons.Default.Cancel to MaterialTheme.colorScheme.error
+        RestaurantOrderStatus.PREPARING -> Icons.Default.Restaurant to MaterialTheme.colorScheme.tertiary
+        RestaurantOrderStatus.READY_FOR_PICKUP -> Icons.Default.Pending to MaterialTheme.colorScheme.secondary
+        else -> Icons.Default.Pending to MaterialTheme.colorScheme.onSurfaceVariant
+    }
+
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            modifier = Modifier.size(14.dp),
+            tint = color
+        )
+        Spacer(modifier = Modifier.width(4.dp))
+        Text(
+            text = status.displayName,
+            style = MaterialTheme.typography.labelMedium,
+            color = color,
+            fontWeight = FontWeight.Medium
+        )
+    }
+}
+
+/**
  * Order header with ID and time.
  */
 @Composable
@@ -146,6 +180,8 @@ private fun OrderHeader(order: RestaurantOrder) {
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold
             )
+            Spacer(modifier = Modifier.height(4.dp))
+            OrderStatusChip(status = order.status)
             order.createdAt?.let { timestamp ->
                 Row(
                     verticalAlignment = Alignment.CenterVertically
@@ -521,7 +557,7 @@ private fun ReadyActionButtons(
                     modifier = Modifier.size(18.dp)
                 )
                 Spacer(modifier = Modifier.width(4.dp))
-                Text("Ready for Pickup")
+                Text("Mark Ready for Pickup")
             }
         }
     }
