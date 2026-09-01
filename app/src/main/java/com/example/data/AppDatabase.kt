@@ -24,7 +24,11 @@ import com.example.data.entity.DriverEntity
 // fallbackToDestructiveMigration() (below) means this bump is enough on
 // its own — no explicit Migration needed, Room just rebuilds the local
 // cache fresh, which is fine since it only ever mirrors Firestore anyway.
-@Database(entities = [OrderEntity::class, RestaurantEntity::class, DriverEntity::class], version = 8, exportSchema = false)
+// version bumped 8 -> 9: OrderEntity gained firestoreOrderId, added when
+// order creation was wired up to actually write through to Firestore
+// (previously orders only ever existed in this local Room cache, so no
+// restaurant could ever see or accept a customer's order).
+@Database(entities = [OrderEntity::class, RestaurantEntity::class, DriverEntity::class], version = 9, exportSchema = false)
 @TypeConverters(Converters::class)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun orderDao(): OrderDao

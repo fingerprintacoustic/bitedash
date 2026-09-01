@@ -593,6 +593,19 @@ viewModelScope.launch {
         _phoneInput.value = phone
     }
 
+    // Maps this app's payment-channel selector strings to the canonical
+    // values FirestoreOrder.paymentMethod expects. Channels without a
+    // real mobile-money equivalent (Bank Cards, ZIPIT, etc.) still need
+    // *some* stable value, so they fall back to an uppercased/underscored
+    // version of their own label rather than being lost.
+    private fun mapToFirestorePaymentMethod(method: String): String = when (method) {
+        "EcoCash" -> "ECO_CASH"
+        "OneMoney" -> "ONE_MONEY"
+        "InnBucks" -> "INNBUCKS"
+        "USD Cash" -> "CASH_ON_DELIVERY"
+        else -> method.uppercase().replace(" ", "_").replace("'", "")
+    }
+
     // Places order & launches USSD prompt / OTP simulation
     fun processCheckout() {
         val cartItems = _cart.value
@@ -606,6 +619,12 @@ viewModelScope.launch {
         // Simple validation
         if (paymentPhone.length < 9) {
             _paymentStep.value = PaymentStep.Error("Please enter a valid Zimbabwean mobile money number.")
+            return
+        }
+
+        val uid = com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.uid
+        if (uid == null) {
+            _paymentStep.value = PaymentStep.Error("You need to be signed in to place an order.")
             return
         }
 
@@ -627,9 +646,61 @@ viewModelScope.launch {
             val timestampSec = System.currentTimeMillis() % 100000
             val ref = "BD-${method.uppercase().take(3)}-$randomLetters-$timestampSec"
 
-            // Save to DB
             val itemsSummaryStr = cartItems.joinToString(", ") { "${it.menuItem.name} x${it.quantity}" }
             val initialStatus = if (_isManualMode.value) "PENDING_ACCEPTANCE" else "PREPARING"
+            val subtotal = cartItems.sumOf { it.menuItem.price * it.quantity }
+
+            // Best-effort lookup of the customer's profile for name/address on
+            // the order — the order still goes through even if this fails.
+            val customerProfile = try {
+                firestoreService.getUser(uid)
+            } catch (e: Exception) {
+                null
+            }
+
+            // Write the order through to Firestore FIRST. This is the doc a
+            // restaurant owner's Order Management screen (getRestaurantOrdersFlow)
+            // and the admin Orders tab (getActiveOrdersFlow) actually read from —
+            // without this, an order only ever existed on the customer's own
+            // device and no restaurant could ever see or accept it.
+            val firestoreOrder = FirestoreOrder(
+                userId = uid,
+                restaurantId = restaurant.id,
+                restaurantName = restaurant.name,
+                restaurantAddress = restaurant.location,
+                customerName = customerProfile?.displayName ?: "",
+                customerAddress = customerProfile?.address ?: "",
+                customerPhone = paymentPhone,
+                itemsSummary = itemsSummaryStr,
+                items = cartItems.map {
+                    com.example.data.firebase.FirestoreOrderItem(
+                        menuItemId = it.menuItem.id,
+                        itemId = it.menuItem.id,
+                        name = it.menuItem.name,
+                        itemName = it.menuItem.name,
+                        price = it.menuItem.price,
+                        quantity = it.quantity
+                    )
+                },
+                subtotal = subtotal,
+                deliveryFee = restaurant.deliveryFee,
+                driverTip = _driverTip.value,
+                totalCost = sum,
+                status = initialStatus,
+                paymentMethod = mapToFirestorePaymentMethod(method),
+                paymentRef = ref,
+                paymentStatus = "PENDING"
+            )
+
+            val firestoreOrderId = firestoreService.createOrder(firestoreOrder)
+            if (firestoreOrderId == null) {
+                _paymentStep.value = PaymentStep.Error(
+                    "Couldn't reach the server to place your order. Please check your connection and try again."
+                )
+                return@launch
+            }
+
+            // Save to local Room cache (mirrors Firestore; not the source of truth)
             val newOrder = OrderEntity(
                 restaurantName = restaurant.name,
                 itemsSummary = itemsSummaryStr,
@@ -637,7 +708,8 @@ viewModelScope.launch {
                 paymentMethod = method,
                 paymentPhone = paymentPhone,
                 status = initialStatus,
-                driverTip = _driverTip.value
+                driverTip = _driverTip.value,
+                firestoreOrderId = firestoreOrderId
             )
 
             val orderId = repository.insertOrder(newOrder)

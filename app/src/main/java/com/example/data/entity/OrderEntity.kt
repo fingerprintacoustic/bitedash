@@ -16,5 +16,6 @@ data class OrderEntity(
     val timestamp: Long = System.currentTimeMillis(),
     val driverId: String? = null,
     val driverName: String? = null,
-    val isSettled: Boolean = false
+    val isSettled: Boolean = false,
+    val firestoreOrderId: String? = null
 )
