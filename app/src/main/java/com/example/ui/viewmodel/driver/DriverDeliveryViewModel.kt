@@ -69,6 +69,11 @@ class DriverDeliveryViewModel(
                             )
                         }
                     }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                // Expected: cancelling the previous listener before starting
+                // a new one (see availableOrdersJob above) must propagate
+                // normally, not surface as a user-facing error.
+                throw e
             } catch (e: Exception) {
                 _uiState.update {
                     it.copy(
@@ -95,6 +100,13 @@ class DriverDeliveryViewModel(
                             it.copy(myDeliveries = myDeliveries)
                         }
                     }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                // Expected: cancelling the previous listener before starting
+                // a new one (see myDeliveriesJob above) must propagate
+                // normally, not surface as a user-facing error — this is
+                // what was producing the false "Failed to load deliveries:
+                // StandaloneCoroutine was cancelled" message on refresh.
+                throw e
             } catch (e: Exception) {
                 _uiState.update {
                     it.copy(

@@ -73,6 +73,14 @@ class RestaurantOrderViewModel(
                             )
                         }
                     }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                // Expected: loadOrders() cancels the previous listener job
+                // before starting a new one (see ordersListenerJob above).
+                // That cancellation must propagate normally, not be shown
+                // as a user-facing error — this is what was producing the
+                // false "Failed to load orders: StandaloneCoroutine was
+                // cancelled" message on every refresh.
+                throw e
             } catch (e: Exception) {
                 _uiState.update {
                     it.copy(
