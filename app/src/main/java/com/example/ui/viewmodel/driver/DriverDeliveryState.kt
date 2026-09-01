@@ -83,6 +83,7 @@ data class DriverDeliveryOrder(
     val itemsSummary: String = "",
     val subtotal: Double = 0.0,
     val deliveryFee: Double = 0.0,
+    val driverTip: Double = 0.0,
     val totalCost: Double = 0.0,
     val orderStatus: String = "",
     val deliveryStatus: DriverDeliveryStatus = DriverDeliveryStatus.UNASSIGNED,

@@ -3,6 +3,7 @@ package com.example.ui.viewmodel.driver
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.data.firebase.FirestoreService
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -35,6 +36,8 @@ class DriverDeliveryViewModel(
     
     private val _uiState = MutableStateFlow(DriverDeliveryUiState())
     val uiState: StateFlow<DriverDeliveryUiState> = _uiState.asStateFlow()
+    private var availableOrdersJob: Job? = null
+    private var myDeliveriesJob: Job? = null
     
     init {
         loadAvailableOrders()
@@ -48,7 +51,8 @@ class DriverDeliveryViewModel(
      * Only shows orders with status READY_FOR_PICKUP and delivery UNASSIGNED.
      */
     fun loadAvailableOrders() {
-        viewModelScope.launch {
+        availableOrdersJob?.cancel()
+        availableOrdersJob = viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true, errorMessage = null) }
             
             try {
@@ -80,7 +84,8 @@ class DriverDeliveryViewModel(
      * Load driver's assigned deliveries.
      */
     fun loadMyDeliveries() {
-        viewModelScope.launch {
+        myDeliveriesJob?.cancel()
+        myDeliveriesJob = viewModelScope.launch {
             try {
                 firestoreService.getDriverDeliveriesFlow(driverId)
                     .collect { firestoreOrders ->
@@ -117,6 +122,15 @@ class DriverDeliveryViewModel(
      * - driverId = currentDriverId
      * - driverName = currentDriverName
      */
+    /**
+     * Accept a delivery.
+     * Updates order with driverId/driverName/deliveryStatus=ASSIGNED in
+     * Firestore. No manual local list mutation — the live listeners
+     * (loadAvailableOrders/loadMyDeliveries) are the single source of
+     * truth, same fix applied to RestaurantOrderViewModel after an
+     * equivalent optimistic-update race caused orders to vanish from
+     * the restaurant screens until a manual refresh.
+     */
     fun acceptDelivery(orderId: String) {
         viewModelScope.launch {
             _uiState.update { it.copy(actionInProgress = orderId) }
@@ -129,22 +143,8 @@ class DriverDeliveryViewModel(
                 )
                 
                 if (success) {
-                    // Move order from available to my deliveries
-                    _uiState.update { state ->
-                        val order = state.availableOrders.find { it.orderId == orderId }
-                        val updatedAvailable = state.availableOrders.filter { it.orderId != orderId }
-                        
-                        state.copy(
-                            availableOrders = updatedAvailable,
-                            myDeliveries = if (order != null) {
-                                state.myDeliveries + order.copy(
-                                    deliveryStatus = DriverDeliveryStatus.ASSIGNED,
-                                    driverId = driverId,
-                                    driverName = driverName
-                                )
-                            } else {
-                                state.myDeliveries
-                            },
+                    _uiState.update {
+                        it.copy(
                             actionInProgress = null,
                             successMessage = "Delivery accepted!"
                         )
@@ -183,15 +183,8 @@ class DriverDeliveryViewModel(
                 )
                 
                 if (success) {
-                    _uiState.update { state ->
-                        state.copy(
-                            myDeliveries = state.myDeliveries.map { order ->
-                                if (order.orderId == orderId) {
-                                    order.copy(deliveryStatus = DriverDeliveryStatus.PICKED_UP)
-                                } else {
-                                    order
-                                }
-                            },
+                    _uiState.update {
+                        it.copy(
                             actionInProgress = null,
                             successMessage = "Order picked up!"
                         )
@@ -230,9 +223,8 @@ class DriverDeliveryViewModel(
                 )
                 
                 if (success) {
-                    _uiState.update { state ->
-                        state.copy(
-                            myDeliveries = state.myDeliveries.filter { it.orderId != orderId },
+                    _uiState.update {
+                        it.copy(
                             actionInProgress = null,
                             successMessage = "Delivery completed!"
                         )
@@ -312,6 +304,7 @@ class DriverDeliveryViewModel(
             itemsSummary = this.itemsSummary,
             subtotal = this.subtotal,
             deliveryFee = this.deliveryFee,
+            driverTip = this.driverTip,
             totalCost = this.totalCost,
             orderStatus = this.status,
             deliveryStatus = DriverDeliveryStatus.fromString(this.deliveryStatus ?: "UNASSIGNED"),

@@ -4175,6 +4175,11 @@ fun DriverDashboard(
     val driverViewModel = remember(driver.driverId) {
         DriverDeliveryViewModel(FirestoreService(), driver.driverId, driver.driverName)
     }
+    // Dashboard tab used to read local Room orders (orderHistory) — a
+    // driver on a real, separate device would never see or be able to
+    // claim a real customer's order that way. It now shares the same
+    // live Firestore state already powering the "My Deliveries" tab.
+    val driverOrderUiState by driverViewModel.uiState.collectAsStateWithLifecycle()
 
     val claimableOrders = orderHistory.filter { (it.status == "READY_FOR_PICKUP" || it.status == "PREPARING") && it.driverId == null }
     val myActiveOrders = orderHistory.filter { it.status == "OUT_FOR_DELIVERY" && it.driverId == driver.driverId }
@@ -4240,8 +4245,11 @@ fun DriverDashboard(
                                 shape = RoundedCornerShape(16.dp),
                                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f))
                             ) {
-                                val baseEarnings = myCompletedOrders.size * 2.00
-                                val tipsEarnings = myCompletedOrders.sumOf { it.driverTip }
+                                val myDeliveredOrders = driverOrderUiState.myDeliveries.filter {
+                                    it.deliveryStatus == com.example.ui.viewmodel.driver.DriverDeliveryStatus.DELIVERED
+                                }
+                                val baseEarnings = myDeliveredOrders.size * 2.00
+                                val tipsEarnings = myDeliveredOrders.sumOf { it.driverTip }
                                 val totalEarnings = baseEarnings + tipsEarnings
 
                                 Column(
@@ -4254,7 +4262,7 @@ fun DriverDashboard(
                                     ) {
                                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                             Text("Deliveries", style = MaterialTheme.typography.labelMedium, color = Color.Gray)
-                                            Text("${myCompletedOrders.size} runs", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
+                                            Text("${myDeliveredOrders.size} runs", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
                                         }
                                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                             Text("Base Fees", style = MaterialTheme.typography.labelMedium, color = Color.Gray)
@@ -4278,8 +4286,15 @@ fun DriverDashboard(
                             }
                         }
 
-                        // Active claim delivery Map Simulation
-                        if (myActiveOrders.isNotEmpty()) {
+                        // Active claim delivery — now sourced from the same
+                        // live Firestore state as "My Deliveries", so a
+                        // claim made from either tab (or another device)
+                        // shows up correctly here.
+                        val myActiveDeliveries = driverOrderUiState.myDeliveries.filter {
+                            it.deliveryStatus == com.example.ui.viewmodel.driver.DriverDeliveryStatus.ASSIGNED ||
+                                it.deliveryStatus == com.example.ui.viewmodel.driver.DriverDeliveryStatus.PICKED_UP
+                        }
+                        if (myActiveDeliveries.isNotEmpty()) {
                             item {
                                 Text(
                                     "Your Current Active Run",
@@ -4288,7 +4303,7 @@ fun DriverDashboard(
                                 )
                             }
 
-                            items(myActiveOrders) { order ->
+                            items(myActiveDeliveries) { order ->
                                 ElevatedCard(
                                     modifier = Modifier.fillMaxWidth()
                                 ) {
@@ -4298,37 +4313,54 @@ fun DriverDashboard(
                                             horizontalArrangement = Arrangement.SpaceBetween,
                                             verticalAlignment = Alignment.CenterVertically
                                         ) {
-                                            Text("Order #${order.id} Run", fontWeight = FontWeight.Bold)
-                                            Text("Status: Out For Delivery", color = MaterialTheme.colorScheme.primary, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                                        }
-
-                                        Text("Deliver from: ${order.restaurantName}", fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
-                                        Text("Cargo: ${order.itemsSummary}\nPhone client: ${order.paymentPhone}", style = MaterialTheme.typography.bodySmall, color = Color.Gray)
-
-                                        // Rider progress indicator bar
-                                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                            Text("Your Simulation Route Progress:", style = MaterialTheme.typography.labelSmall, color = Color.Gray)
-                                            LinearProgressIndicator(
-                                                progress = trackingProgress,
-                                                modifier = Modifier.fillMaxWidth().height(8.dp).clip(RoundedCornerShape(4.dp))
+                                            Text("Order #${order.orderId.take(6)} Run", fontWeight = FontWeight.Bold)
+                                            Text(
+                                                if (order.deliveryStatus == com.example.ui.viewmodel.driver.DriverDeliveryStatus.PICKED_UP) "Status: Out For Delivery" else "Status: Awaiting Pickup",
+                                                color = MaterialTheme.colorScheme.primary, fontSize = 13.sp, fontWeight = FontWeight.Bold
                                             )
                                         }
 
-                                        Button(
-                                            onClick = { viewModel.updateOrderStatusManual(order.id, "COMPLETED") },
-                                            modifier = Modifier.fillMaxWidth(),
-                                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2E7D32))
-                                        ) {
-                                            Icon(Icons.Default.Check, contentDescription = "Deliver")
-                                            Spacer(modifier = Modifier.width(4.dp))
-                                            Text("Confirm Doorstep Delivery & Handover")
+                                        Text("Deliver from: ${order.restaurantName}", fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+                                        Text("Cargo: ${order.itemsSummary}\nPhone client: ${order.customerPhone}", style = MaterialTheme.typography.bodySmall, color = Color.Gray)
+
+                                        if (order.deliveryStatus == com.example.ui.viewmodel.driver.DriverDeliveryStatus.PICKED_UP) {
+                                            // Rider progress indicator bar
+                                            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                                Text("Your Simulation Route Progress:", style = MaterialTheme.typography.labelSmall, color = Color.Gray)
+                                                LinearProgressIndicator(
+                                                    progress = trackingProgress,
+                                                    modifier = Modifier.fillMaxWidth().height(8.dp).clip(RoundedCornerShape(4.dp))
+                                                )
+                                            }
+
+                                            Button(
+                                                onClick = { driverViewModel.completeDelivery(order.orderId) },
+                                                modifier = Modifier.fillMaxWidth(),
+                                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2E7D32))
+                                            ) {
+                                                Icon(Icons.Default.Check, contentDescription = "Deliver")
+                                                Spacer(modifier = Modifier.width(4.dp))
+                                                Text("Confirm Doorstep Delivery & Handover")
+                                            }
+                                        } else {
+                                            Button(
+                                                onClick = { driverViewModel.pickupOrder(order.orderId) },
+                                                modifier = Modifier.fillMaxWidth()
+                                            ) {
+                                                Text("Confirm Pickup From Restaurant")
+                                            }
                                         }
                                     }
                                 }
                             }
                         }
 
-                        // Driver Jobs Board (orders prepared or ready)
+                        // Driver Jobs Board — now sourced from
+                        // driverOrderUiState.availableOrders (live Firestore,
+                        // already correctly filtered to READY_FOR_PICKUP +
+                        // UNASSIGNED), instead of local Room orderHistory
+                        // which a real driver's own device would never have
+                        // a customer's order in.
                         item {
                             Text(
                                 "Harare Delivery Jobs Pool",
@@ -4337,7 +4369,7 @@ fun DriverDashboard(
                             )
                         }
 
-                        val jobs = claimableOrders
+                        val jobs = driverOrderUiState.availableOrders
                         if (jobs.isEmpty()) {
                             item {
                                 Box(
@@ -4360,9 +4392,9 @@ fun DriverDashboard(
                                             horizontalArrangement = Arrangement.SpaceBetween,
                                             verticalAlignment = Alignment.CenterVertically
                                         ) {
-                                            Text("Job #${job.id} • ${job.restaurantName}", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium)
+                                            Text("Job #${job.orderId.take(6)} • ${job.restaurantName}", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium)
                                             Badge(containerColor = MaterialTheme.colorScheme.primaryContainer) {
-                                                Text(job.status)
+                                                Text(job.orderStatus)
                                             }
                                         }
 
@@ -4370,11 +4402,10 @@ fun DriverDashboard(
                                         Text("Est Payout: $2.00 (Standard Delivery Surcharge)", fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary, fontSize = 12.sp)
 
                                         Button(
-                                            onClick = { viewModel.claimOrderManual(job.id, driver.driverId, driver.driverName) },
-                                            modifier = Modifier.fillMaxWidth(),
-                                            enabled = job.status == "READY_FOR_PICKUP"
+                                            onClick = { driverViewModel.acceptDelivery(job.orderId) },
+                                            modifier = Modifier.fillMaxWidth()
                                         ) {
-                                            Text(if (job.status == "READY_FOR_PICKUP") "Pick up & Start Journey" else "Waiting for kitchen to finish cooking...")
+                                            Text("Pick up & Start Journey")
                                         }
                                     }
                                 }
