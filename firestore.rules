@@ -20,6 +20,12 @@ service cloud.firestore {
         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
     }
 
+    // Check if user is a driver (by their own user document's role field).
+    function isDriver() {
+      return isAuthenticated() &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'driver';
+    }
+
     // A restaurant's owner (by UID) or an extra staff member the owner
     // added (by email, since we can't look up a UID from an email
     // client-side). Emails are stored lowercase and compared lowercase
@@ -126,6 +132,11 @@ service cloud.firestore {
       // Drivers can read orders assigned to them
       allow read: if isAuthenticated() && resource.data.driverId == request.auth.uid;
       
+      // Drivers can read unclaimed deliveries so they have something to
+      // claim in the first place (getAvailableDeliveriesFlow queries
+      // deliveryStatus == "UNASSIGNED" across all restaurants).
+      allow read: if isDriver() && resource.data.deliveryStatus == 'UNASSIGNED';
+      
       // Admin can read all orders
       allow read: if isAdmin();
       
@@ -139,11 +150,23 @@ service cloud.firestore {
         request.resource.data.diff(resource.data).affectedKeys()
           .hasOnly(['status', 'updatedAt', 'acceptedAt']);
       
-      // Drivers can update order status (pickup, deliver)
+      // A driver claiming an unassigned, ready delivery (assignDriverToOrder):
+      // sets driverId to their own uid, driverName, and deliveryStatus.
+      allow update: if isDriver() &&
+        resource.data.deliveryStatus == 'UNASSIGNED' &&
+        resource.data.driverId == null &&
+        request.resource.data.driverId == request.auth.uid &&
+        request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['driverId', 'driverName', 'deliveryStatus', 'updatedAt']);
+      
+      // Drivers can update order/delivery status on deliveries already
+      // assigned to them (pickup, deliver). Includes deliveryStatus —
+      // updateDeliveryStatus() writes deliveryStatus + updatedAt only,
+      // which the previous version of this rule didn't permit.
       allow update: if isAuthenticated() && 
         resource.data.driverId == request.auth.uid &&
         request.resource.data.diff(resource.data).affectedKeys()
-          .hasOnly(['status', 'updatedAt', 'completedAt']);
+          .hasOnly(['status', 'deliveryStatus', 'updatedAt', 'completedAt']);
       
       // Admin can update any order
       allow update: if isAdmin();
