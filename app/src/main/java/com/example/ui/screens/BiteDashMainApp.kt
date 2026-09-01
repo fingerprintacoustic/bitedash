@@ -869,9 +869,14 @@ fun CartScreen(viewModel: BiteDashViewModel) {
     val cart by viewModel.cart.collectAsStateWithLifecycle()
     val checkoutMethod by viewModel.checkoutMethod.collectAsStateWithLifecycle()
     val phoneInput by viewModel.phoneInput.collectAsStateWithLifecycle()
+    val deliveryAddressInput by viewModel.deliveryAddressInput.collectAsStateWithLifecycle()
     val paymentStep by viewModel.paymentStep.collectAsStateWithLifecycle()
     val selectedRestaurant by viewModel.selectedRestaurant.collectAsStateWithLifecycle()
     val driverTip by viewModel.driverTip.collectAsStateWithLifecycle()
+
+    LaunchedEffect(Unit) {
+        viewModel.loadDeliveryAddressDefaultIfBlank()
+    }
 
     if (cart.isEmpty()) {
         Box(
@@ -1224,6 +1229,21 @@ fun CartScreen(viewModel: BiteDashViewModel) {
                             style = MaterialTheme.typography.labelMedium,
                             color = Color.Gray,
                             fontWeight = FontWeight.Bold
+                        )
+
+                        OutlinedTextField(
+                            value = deliveryAddressInput,
+                            onValueChange = { viewModel.setDeliveryAddressInput(it) },
+                            label = { Text("Delivery Address") },
+                            placeholder = { Text("e.g. 12 Samora Machel Ave, Harare") },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("checkout_address_input"),
+                            singleLine = true,
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = inputColor,
+                                focusedLabelColor = inputColor
+                            )
                         )
 
                         OutlinedTextField(

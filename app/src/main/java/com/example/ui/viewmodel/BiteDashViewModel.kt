@@ -103,6 +103,9 @@ class BiteDashViewModel(application: Application) : AndroidViewModel(application
     private val _phoneInput = MutableStateFlow("")
     val phoneInput: StateFlow<String> = _phoneInput.asStateFlow()
 
+    private val _deliveryAddressInput = MutableStateFlow("")
+    val deliveryAddressInput: StateFlow<String> = _deliveryAddressInput.asStateFlow()
+
     private val _paymentStep = MutableStateFlow<PaymentStep>(PaymentStep.Idle)
     val paymentStep: StateFlow<PaymentStep> = _paymentStep.asStateFlow()
 
@@ -593,6 +596,30 @@ viewModelScope.launch {
         _phoneInput.value = phone
     }
 
+    fun setDeliveryAddressInput(address: String) {
+        _deliveryAddressInput.value = address
+    }
+
+    // Pre-fills the checkout delivery address from the customer's saved
+    // profile address (set at signup) the first time checkout opens, but
+    // never overwrites something the customer has already typed here —
+    // it stays editable per order from there.
+    fun loadDeliveryAddressDefaultIfBlank() {
+        if (_deliveryAddressInput.value.isNotBlank()) return
+        val uid = com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.uid ?: return
+        viewModelScope.launch {
+            try {
+                val profile = firestoreService.getUser(uid)
+                if (_deliveryAddressInput.value.isBlank() && !profile?.address.isNullOrBlank()) {
+                    _deliveryAddressInput.value = profile!!.address
+                }
+            } catch (e: Exception) {
+                // Best-effort prefill only — checkout still works if this fails,
+                // the customer can just type their address in manually.
+            }
+        }
+    }
+
     // Maps this app's payment-channel selector strings to the canonical
     // values FirestoreOrder.paymentMethod expects. Channels without a
     // real mobile-money equivalent (Bank Cards, ZIPIT, etc.) still need
@@ -619,6 +646,10 @@ viewModelScope.launch {
         // Simple validation
         if (paymentPhone.length < 9) {
             _paymentStep.value = PaymentStep.Error("Please enter a valid Zimbabwean mobile money number.")
+            return
+        }
+        if (_deliveryAddressInput.value.isBlank()) {
+            _paymentStep.value = PaymentStep.Error("Please enter a delivery address so the restaurant and driver know where to bring your order.")
             return
         }
 
@@ -669,7 +700,7 @@ viewModelScope.launch {
                 restaurantName = restaurant.name,
                 restaurantAddress = restaurant.location,
                 customerName = customerProfile?.displayName ?: "",
-                customerAddress = customerProfile?.address ?: "",
+                customerAddress = _deliveryAddressInput.value.ifBlank { customerProfile?.address ?: "" },
                 customerPhone = paymentPhone,
                 itemsSummary = itemsSummaryStr,
                 items = cartItems.map {
@@ -698,6 +729,17 @@ viewModelScope.launch {
                     "Couldn't reach the server to place your order. Please check your connection and try again."
                 )
                 return@launch
+            }
+
+            // Save this delivery address back to the customer's profile if
+            // it's new or changed, so it prefills as the default next time
+            // (best-effort — the order itself already succeeded above).
+            if (customerProfile?.address != _deliveryAddressInput.value) {
+                try {
+                    firestoreService.updateUserField(uid, "address", _deliveryAddressInput.value)
+                } catch (e: Exception) {
+                    // Non-fatal — the order is already placed either way.
+                }
             }
 
             // Save to local Room cache (mirrors Firestore; not the source of truth)

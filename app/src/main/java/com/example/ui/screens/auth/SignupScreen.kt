@@ -18,6 +18,7 @@ import androidx.compose.material.icons.outlined.AdminPanelSettings
 import androidx.compose.material.icons.outlined.DeliveryDining
 import androidx.compose.material.icons.outlined.Email
 import androidx.compose.material.icons.outlined.Lock
+import androidx.compose.material.icons.outlined.LocationOn
 import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material.icons.outlined.Phone
 import androidx.compose.material.icons.outlined.Restaurant
@@ -55,6 +56,7 @@ fun SignupScreen(
     val confirmPassword by authViewModel.confirmPassword.collectAsStateWithLifecycle()
     val displayName by authViewModel.displayName.collectAsStateWithLifecycle()
     val phone by authViewModel.phone.collectAsStateWithLifecycle()
+    val address by authViewModel.address.collectAsStateWithLifecycle()
     val selectedRole by authViewModel.selectedRole.collectAsStateWithLifecycle()
     val isLoading by authViewModel.isLoading.collectAsStateWithLifecycle()
     val errorMessage by authViewModel.errorMessage.collectAsStateWithLifecycle()
@@ -232,6 +234,27 @@ fun SignupScreen(
                     keyboardType = KeyboardType.Phone,
                     imeAction = ImeAction.Next
                 ),
+                singleLine = true,
+                shape = RoundedCornerShape(12.dp)
+            )
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Address field — used as the default delivery address at
+            // checkout (customers can still edit it per order there).
+            OutlinedTextField(
+                value = address,
+                onValueChange = { authViewModel.updateAddress(it) },
+                label = { Text("Address") },
+                placeholder = { Text("e.g. 12 Samora Machel Ave, Harare") },
+                leadingIcon = {
+                    Icon(
+                        imageVector = Icons.Outlined.LocationOn,
+                        contentDescription = null
+                    )
+                },
+                modifier = Modifier.fillMaxWidth(),
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
                 singleLine = true,
                 shape = RoundedCornerShape(12.dp)
             )
