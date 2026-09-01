@@ -50,14 +50,17 @@ class RestaurantOrderViewModel(
             try {
                 firestoreService.getRestaurantOrdersFlow(restaurantId)
                     .collect { firestoreOrders ->
-                        // Filter to only PAID orders that need restaurant action
-                        val paidOrders = firestoreOrders
-                            .filter { it.paymentStatus == "PAID" }
-                            .map { it.toRestaurantOrder() }
+                        // Previously filtered to paymentStatus == "PAID" only, but
+                        // nothing in the app ever sets that (no Paynow confirmation
+                        // webhook, and Cash on Delivery is unpaid until the order
+                        // arrives) — so that filter silently hid every order from
+                        // this screen, regardless of payment method. Show all orders
+                        // for this restaurant instead.
+                        val orders = firestoreOrders.map { it.toRestaurantOrder() }
                         
                         _uiState.update {
                             it.copy(
-                                orders = paidOrders,
+                                orders = orders,
                                 isLoading = false
                             )
                         }
