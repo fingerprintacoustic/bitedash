@@ -2222,6 +2222,39 @@ fun AdminPortalOverlay(
                                                         Text(d.name, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium)
                                                         Text("Phone: ${d.phone} • Vehicle: ${d.vehicle}", fontSize = 12.sp, color = Color.Gray)
                                                     }
+                                                    var showManageAsDriverConfirm by remember { mutableStateOf(false) }
+                                                    IconButton(
+                                                        onClick = { showManageAsDriverConfirm = true },
+                                                        modifier = Modifier.testTag("admin_manage_driver_${d.id}")
+                                                    ) {
+                                                        Icon(
+                                                            imageVector = Icons.Default.LocalShipping,
+                                                            contentDescription = "Manage as Driver",
+                                                            tint = MaterialTheme.colorScheme.primary
+                                                        )
+                                                    }
+                                                    if (showManageAsDriverConfirm) {
+                                                        AlertDialog(
+                                                            onDismissRequest = { showManageAsDriverConfirm = false },
+                                                            title = { Text("Manage \"${d.name}\" as admin?") },
+                                                            text = {
+                                                                Text("You'll see and act on their available and assigned deliveries on their behalf. This is meant as a safety net — for example, if the rider is unavailable or you're testing the delivery flow. Changes are real and immediate.")
+                                                            },
+                                                            confirmButton = {
+                                                                TextButton(onClick = {
+                                                                    showManageAsDriverConfirm = false
+                                                                    viewModel.setProfile(UserProfile.Driver(driverId = d.id, driverName = d.name))
+                                                                }) {
+                                                                    Text("Continue")
+                                                                }
+                                                            },
+                                                            dismissButton = {
+                                                                TextButton(onClick = { showManageAsDriverConfirm = false }) {
+                                                                    Text("Cancel")
+                                                                }
+                                                            }
+                                                        )
+                                                    }
                                                     var showDeleteConfirm by remember { mutableStateOf(false) }
                                                     IconButton(
                                                         onClick = { showDeleteConfirm = true },
