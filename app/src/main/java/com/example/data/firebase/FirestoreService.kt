@@ -395,11 +395,18 @@ class FirestoreService {
     }
 
     fun getRestaurantOrdersFlow(restaurantId: String): Flow<List<FirestoreOrder>> {
+        // Sorting done client-side rather than via orderBy() — a filter on
+        // one field plus orderBy on a different field can require a
+        // composite index depending on how Firestore evaluates it, and
+        // this avoids that dependency entirely, matching the same
+        // defensive pattern already used for getActiveOrdersFlow().
         return db.collection(COLLECTION_ORDERS)
             .whereEqualTo("restaurantId", restaurantId)
-            .orderBy("createdAt", Query.Direction.DESCENDING)
             .snapshots()
-            .map { snapshot -> snapshot.toObjects(FirestoreOrder::class.java) }
+            .map { snapshot ->
+                snapshot.toObjects(FirestoreOrder::class.java)
+                    .sortedByDescending { it.createdAt?.seconds ?: 0 }
+            }
     }
 
 
