@@ -3699,6 +3699,11 @@ fun RestaurantOwnerDashboard(
     val restaurantViewModel = remember(owner.restaurantId) {
         RestaurantOrderViewModel(FirestoreService(), owner.restaurantId)
     }
+    // Dashboard's "Incoming Orders Queue" used to read local Room orders
+    // (matched by restaurant name, never synced with real restaurant
+    // actions) — it now shares this same live Firestore state with the
+    // Order Management tab so both always agree on order status.
+    val restaurantOrderUiState by restaurantViewModel.uiState.collectAsStateWithLifecycle()
 
     val matchedOrders = orderHistory.filter { it.restaurantName.trim().lowercase() == owner.restaurantName.trim().lowercase() }
     val activeOrders = matchedOrders.filter { it.status != "COMPLETED" }
@@ -3880,7 +3885,10 @@ fun RestaurantOwnerDashboard(
                                     }
                                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                         Text("Orders Queue", style = MaterialTheme.typography.labelMedium, color = Color.Gray)
-                                        Text("${activeOrders.size} Pending", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.primary)
+                                        Text(
+                                            "${restaurantOrderUiState.orders.count { it.status != com.example.ui.viewmodel.restaurant.RestaurantOrderStatus.REJECTED }} Pending",
+                                            fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.primary
+                                        )
                                     }
                                 }
                             }
@@ -3998,7 +4006,10 @@ fun RestaurantOwnerDashboard(
                             }
                         }
 
-                        // Active Orders List
+                        // Active Orders List — now sourced from the same live
+                        // Firestore state as Order Management (see
+                        // restaurantOrderUiState above), so both tabs always
+                        // agree on each order's real status.
                         item {
                             Text(
                                 "Incoming Orders Queue",
@@ -4007,7 +4018,11 @@ fun RestaurantOwnerDashboard(
                             )
                         }
 
-                        if (activeOrders.isEmpty()) {
+                        val dashboardActiveOrders = restaurantOrderUiState.orders.filter {
+                            it.status != com.example.ui.viewmodel.restaurant.RestaurantOrderStatus.REJECTED
+                        }
+
+                        if (dashboardActiveOrders.isEmpty()) {
                             item {
                                 Box(
                                     modifier = Modifier
@@ -4019,7 +4034,7 @@ fun RestaurantOwnerDashboard(
                                 }
                             }
                         } else {
-                            items(activeOrders) { order ->
+                            items(dashboardActiveOrders) { order ->
                                 ElevatedCard(
                                     modifier = Modifier.fillMaxWidth()
                                 ) {
@@ -4029,15 +4044,15 @@ fun RestaurantOwnerDashboard(
                                             horizontalArrangement = Arrangement.SpaceBetween,
                                             verticalAlignment = Alignment.CenterVertically
                                         ) {
-                                            Text("Order #${order.id}", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleSmall)
+                                            Text("Order #${order.orderId.take(6)}", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleSmall)
                                             Badge(
                                                 containerColor = when (order.status) {
-                                                    "PENDING_ACCEPTANCE" -> MaterialTheme.colorScheme.tertiaryContainer
-                                                    "PREPARING" -> MaterialTheme.colorScheme.primaryContainer
+                                                    com.example.ui.viewmodel.restaurant.RestaurantOrderStatus.PAID -> MaterialTheme.colorScheme.tertiaryContainer
+                                                    com.example.ui.viewmodel.restaurant.RestaurantOrderStatus.PREPARING -> MaterialTheme.colorScheme.primaryContainer
                                                     else -> MaterialTheme.colorScheme.secondaryContainer
                                                 }
                                             ) {
-                                                Text(order.status)
+                                                Text(order.status.displayName)
                                             }
                                         }
 
@@ -4049,7 +4064,7 @@ fun RestaurantOwnerDashboard(
                                             verticalAlignment = Alignment.CenterVertically
                                         ) {
                                             Text("Payout: $" + String.format(Locale.US, "%.2f", order.totalCost) + " (" + order.paymentMethod + ")", fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-                                            Text("Tel: ${order.paymentPhone}", color = Color.Gray, fontSize = 12.sp)
+                                            Text("Tel: ${order.customerPhone}", color = Color.Gray, fontSize = 12.sp)
                                         }
 
                                         Divider(color = Color.LightGray.copy(alpha = 0.3f))
@@ -4059,24 +4074,38 @@ fun RestaurantOwnerDashboard(
                                             horizontalArrangement = Arrangement.End,
                                             verticalAlignment = Alignment.CenterVertically
                                         ) {
-                                            if (order.status == "PENDING_ACCEPTANCE") {
-                                                Button(
-                                                    onClick = { viewModel.updateOrderStatusManual(order.id, "PREPARING") },
-                                                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
-                                                ) {
-                                                    Text("Accept & Start Cook")
+                                            when (order.status) {
+                                                com.example.ui.viewmodel.restaurant.RestaurantOrderStatus.PENDING_PAYMENT,
+                                                com.example.ui.viewmodel.restaurant.RestaurantOrderStatus.PAID -> {
+                                                    Button(
+                                                        onClick = { restaurantViewModel.acceptOrder(order.orderId) },
+                                                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
+                                                    ) {
+                                                        Text("Accept & Start Cook")
+                                                    }
                                                 }
-                                            } else if (order.status == "PREPARING") {
-                                                Button(
-                                                    onClick = { viewModel.updateOrderStatusManual(order.id, "READY_FOR_PICKUP") },
-                                                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary)
-                                                ) {
-                                                    Text("Mark Cooked & Ready")
+                                                com.example.ui.viewmodel.restaurant.RestaurantOrderStatus.ACCEPTED -> {
+                                                    Button(
+                                                        onClick = { restaurantViewModel.startPreparing(order.orderId) },
+                                                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
+                                                    ) {
+                                                        Text("Start Preparing")
+                                                    }
                                                 }
-                                            } else if (order.status == "READY_FOR_PICKUP") {
-                                                Text("Waiting for Rider Pickup...", style = MaterialTheme.typography.labelMedium, color = Color.Gray)
-                                            } else {
-                                                Text("Rider is delivering...", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+                                                com.example.ui.viewmodel.restaurant.RestaurantOrderStatus.PREPARING -> {
+                                                    Button(
+                                                        onClick = { restaurantViewModel.markReadyForPickup(order.orderId) },
+                                                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary)
+                                                    ) {
+                                                        Text("Mark Cooked & Ready")
+                                                    }
+                                                }
+                                                com.example.ui.viewmodel.restaurant.RestaurantOrderStatus.READY_FOR_PICKUP -> {
+                                                    Text("Waiting for Rider Pickup...", style = MaterialTheme.typography.labelMedium, color = Color.Gray)
+                                                }
+                                                else -> {
+                                                    Text(order.status.displayName, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+                                                }
                                             }
                                         }
                                     }
