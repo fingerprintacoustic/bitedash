@@ -65,9 +65,14 @@ secrets {
 
 dependencies {
   implementation(platform(libs.androidx.compose.bom))
-  
+
   implementation("com.google.firebase:firebase-firestore-ktx:25.1.4")
   implementation("com.google.firebase:firebase-auth-ktx:23.1.0")
+  // firebase-functions via the BoM (unversioned) rather than a hand-pinned
+  // version — Google stopped publishing new -ktx artifacts in mid-2025, and
+  // the plain module already has first-class Kotlin support.
+  implementation(platform("com.google.firebase:firebase-bom:34.17.0"))
+  implementation("com.google.firebase:firebase-functions")
   implementation(libs.androidx.activity.compose)
   implementation(libs.androidx.compose.material.icons.core)
   implementation(libs.androidx.compose.material.icons.extended)

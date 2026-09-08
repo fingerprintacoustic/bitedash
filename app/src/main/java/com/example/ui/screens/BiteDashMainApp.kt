@@ -1,5 +1,7 @@
 package com.example.ui.screens
 
+import android.content.Intent
+import android.net.Uri
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.BorderStroke
@@ -31,6 +33,7 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -1341,6 +1344,35 @@ fun CartScreen(viewModel: BiteDashViewModel) {
                         is PaymentStep.ProcessingConfirmation -> {
                             CircularProgressIndicator(color = MaterialTheme.colorScheme.tertiary)
                             Text("Verifying secured balance clearing with Econet/Simbisa...", textAlign = TextAlign.Center)
+                        }
+                        is PaymentStep.RedirectToPaynow -> {
+                            val context = LocalContext.current
+                            LaunchedEffect(currentStep.url) {
+                                context.startActivity(
+                                    Intent(Intent.ACTION_VIEW, Uri.parse(currentStep.url))
+                                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                )
+                            }
+                            Icon(Icons.Default.Phone, contentDescription = "Open Paynow", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(56.dp))
+                            Text("Complete your payment", fontWeight = FontWeight.Bold)
+                            Text(
+                                "We opened Paynow's secure checkout in your browser. Choose EcoCash, OneMoney, InnBucks or card there, then come back here.",
+                                textAlign = TextAlign.Center,
+                                style = MaterialTheme.typography.bodyMedium
+                            )
+                            Button(
+                                onClick = {
+                                    context.startActivity(
+                                        Intent(Intent.ACTION_VIEW, Uri.parse(currentStep.url))
+                                            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                    )
+                                }
+                            ) {
+                                Text("Open Payment Page")
+                            }
+                            Spacer(modifier = Modifier.height(4.dp))
+                            CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
+                            Text("Waiting for payment confirmation...", style = MaterialTheme.typography.bodySmall, color = Color.Gray)
                         }
                         is PaymentStep.Success -> {
                             Icon(Icons.Default.CheckCircle, contentDescription = "Success", tint = EcoCashGreen, modifier = Modifier.size(64.dp))

@@ -38,6 +38,8 @@ sealed interface PaymentStep {
     object SendingPush : PaymentStep
     object WaitingForHandsetPin : PaymentStep
     object ProcessingConfirmation : PaymentStep
+    /** Paynow hosted checkout is ready — customer needs to open [url] to pay. */
+    data class RedirectToPaynow(val url: String) : PaymentStep
     data class Success(val transactionRef: String) : PaymentStep
     data class Error(val message: String) : PaymentStep
 }
@@ -75,6 +77,7 @@ class BiteDashViewModel(application: Application) : AndroidViewModel(application
     private val restaurantRepo: RestaurantRepository
     private val driverRepo: DriverRepository
     private val firestoreService = FirestoreService()
+    private val paymentRepository = com.example.data.repository.PaymentRepository.getInstance()
     private var trackingJob: Job? = null
 
     // Flowing States
@@ -633,7 +636,9 @@ viewModelScope.launch {
         else -> method.uppercase().replace(" ", "_").replace("'", "")
     }
 
-    // Places order & launches USSD prompt / OTP simulation
+    // Places the order, then — unless paying Cash on Delivery — takes the
+    // customer through a real Paynow payment (hosted checkout redirect +
+    // server-verified confirmation) before the order is treated as paid.
     fun processCheckout() {
         val cartItems = _cart.value
         val restaurant = _selectedRestaurant.value ?: return
@@ -642,9 +647,10 @@ viewModelScope.launch {
         val paymentPhone = _phoneInput.value
         val method = _checkoutMethod.value
         val sum = getCartTotal()
+        val isCash = method == "USD Cash"
 
         // Simple validation
-        if (paymentPhone.length < 9) {
+        if (!isCash && paymentPhone.length < 9) {
             _paymentStep.value = PaymentStep.Error("Please enter a valid Zimbabwean mobile money number.")
             return
         }
@@ -660,22 +666,7 @@ viewModelScope.launch {
         }
 
         viewModelScope.launch {
-            // STEP 1: Sending prompt
             _paymentStep.value = PaymentStep.SendingPush
-            delay(1500)
-
-            // STEP 2: Wait for handset PIN simulation
-            _paymentStep.value = PaymentStep.WaitingForHandsetPin
-            delay(3000)
-
-            // STEP 3: Confirming payment with carrier
-            _paymentStep.value = PaymentStep.ProcessingConfirmation
-            delay(1500)
-
-            // Create transaction reference
-            val randomLetters = ('A'..'Z').map { it }.shuffled().take(4).joinToString("")
-            val timestampSec = System.currentTimeMillis() % 100000
-            val ref = "BD-${method.uppercase().take(3)}-$randomLetters-$timestampSec"
 
             val itemsSummaryStr = cartItems.joinToString(", ") { "${it.menuItem.name} x${it.quantity}" }
             val initialStatus = if (_isManualMode.value) "PENDING_ACCEPTANCE" else "PREPARING"
@@ -719,8 +710,8 @@ viewModelScope.launch {
                 totalCost = sum,
                 status = initialStatus,
                 paymentMethod = mapToFirestorePaymentMethod(method),
-                paymentRef = ref,
-                paymentStatus = "PENDING"
+                paymentRef = "",
+                paymentStatus = if (isCash) "CASH_ON_DELIVERY" else "PENDING"
             )
 
             val firestoreOrderId = firestoreService.createOrder(firestoreOrder)
@@ -739,6 +730,63 @@ viewModelScope.launch {
                     firestoreService.updateUserField(uid, "address", _deliveryAddressInput.value)
                 } catch (e: Exception) {
                     // Non-fatal — the order is already placed either way.
+                }
+            }
+
+            // Reference shown on the success screen: the real Paynow
+            // reference once paid, or the order ID itself for Cash on
+            // Delivery (which has no Paynow transaction).
+            var ref = firestoreOrderId
+
+            if (!isCash) {
+                // Still SendingPush here — we're now asking initiatePaynowPayment
+                // to actually start the transaction with Paynow.
+                val paymentResult = paymentRepository.initiatePayment(
+                    com.example.data.payment.PaymentRequest(
+                        orderId = firestoreOrderId,
+                        userId = uid,
+                        amount = sum,
+                        method = com.example.data.payment.PaymentMethod.fromString(mapToFirestorePaymentMethod(method)),
+                        mobileMoneyNumber = paymentPhone,
+                        description = "BiteDash Order $firestoreOrderId"
+                    )
+                )
+
+                when (paymentResult) {
+                    is com.example.data.payment.PaymentResult.Success -> {
+                        val transaction = paymentResult.transaction
+
+                        // Customer completes payment on Paynow's hosted page;
+                        // this state stays up (showing the open-page button +
+                        // a waiting indicator) for the whole poll below, so
+                        // returning to the app after paying resolves it.
+                        _paymentStep.value = PaymentStep.RedirectToPaynow(transaction.browserUrl)
+
+                        val finalStatus = pollPaynowUntilResolved(transaction.transactionId)
+                        when (finalStatus) {
+                            com.example.data.payment.PaymentStatus.PAID -> ref = transaction.transactionId
+                            com.example.data.payment.PaymentStatus.CANCELLED -> {
+                                _paymentStep.value = PaymentStep.Error("Payment was cancelled.")
+                                return@launch
+                            }
+                            else -> {
+                                _paymentStep.value = PaymentStep.Error(
+                                    "We couldn't confirm your payment in time. If money left your account, " +
+                                        "it'll still be applied automatically shortly — otherwise contact " +
+                                        "support with order $firestoreOrderId."
+                                )
+                                return@launch
+                            }
+                        }
+                    }
+                    is com.example.data.payment.PaymentResult.Error -> {
+                        _paymentStep.value = PaymentStep.Error(paymentResult.message)
+                        return@launch
+                    }
+                    is com.example.data.payment.PaymentResult.Cancelled -> {
+                        _paymentStep.value = PaymentStep.Error("Payment was cancelled.")
+                        return@launch
+                    }
                 }
             }
 
@@ -778,6 +826,27 @@ viewModelScope.launch {
 
     fun resetPaymentState() {
         _paymentStep.value = PaymentStep.Idle
+    }
+
+    /**
+     * Poll checkPaynowPaymentStatus until Paynow reports a terminal status
+     * or we give up. The Cloud Function verifies each response with Paynow
+     * (hash-checked) and applies it to Firestore itself — this just relays
+     * the outcome back so the UI can react.
+     */
+    private suspend fun pollPaynowUntilResolved(
+        transactionId: String,
+        maxAttempts: Int = 60,
+        intervalMs: Long = 5000L
+    ): com.example.data.payment.PaymentStatus {
+        repeat(maxAttempts) {
+            delay(intervalMs)
+            val result = paymentRepository.checkPaymentStatus(transactionId)
+            if (result.status != com.example.data.payment.PaymentStatus.PENDING) {
+                return result.status
+            }
+        }
+        return com.example.data.payment.PaymentStatus.PENDING
     }
 
     // Simulated Tracking Timeline

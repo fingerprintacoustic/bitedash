@@ -195,12 +195,14 @@ service cloud.firestore {
       
       // Admin can read all payments
       allow read: if isAdmin();
-      
-      // Users can create payments
-      allow create: if isAuthenticated() && request.resource.data.userId == request.auth.uid;
-      
-      // Admin can update payment status
-      allow update: if isAdmin();
+
+      // Payments are created and updated only by the initiatePaynowPayment /
+      // checkPaynowPaymentStatus / paynowResultWebhook Cloud Functions
+      // (Admin SDK, bypasses these rules) after they've verified the
+      // transaction with Paynow directly. A client can never self-report
+      // "PAID" — that decision is never made by a device the customer
+      // controls. Admin can still write directly for support/manual fixes.
+      allow create, update: if isAdmin();
       
       // No deletion of payments (audit trail)
       allow delete: if false;
