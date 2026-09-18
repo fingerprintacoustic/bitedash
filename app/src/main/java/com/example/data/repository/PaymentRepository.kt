@@ -2,7 +2,7 @@ package com.example.data.repository
 
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.Query
-import com.google.firebase.firestore.ktx.snapshots
+import com.google.firebase.firestore.snapshots
 import com.google.firebase.functions.FirebaseFunctions
 import com.google.firebase.functions.FirebaseFunctionsException
 import com.example.data.payment.PaymentMethod

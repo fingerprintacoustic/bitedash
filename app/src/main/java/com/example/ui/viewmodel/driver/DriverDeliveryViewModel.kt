@@ -222,17 +222,16 @@ class DriverDeliveryViewModel(
     
     /**
      * Complete a delivery.
-     * Updates order with deliveryStatus = DELIVERED.
+     * Updates order with deliveryStatus = DELIVERED AND status = COMPLETED —
+     * the order status also has to flip here, or the order never appears in
+     * completed-orders history/tabs and never becomes eligible for payout.
      */
     fun completeDelivery(orderId: String) {
         viewModelScope.launch {
             _uiState.update { it.copy(actionInProgress = orderId) }
-            
+
             try {
-                val success = firestoreService.updateDeliveryStatus(
-                    orderId = orderId,
-                    deliveryStatus = "DELIVERED"
-                )
+                val success = firestoreService.completeDelivery(orderId)
                 
                 if (success) {
                     _uiState.update {

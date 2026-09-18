@@ -4,7 +4,7 @@ import com.google.firebase.Timestamp
 import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.Query
-import com.google.firebase.firestore.ktx.snapshots
+import com.google.firebase.firestore.snapshots
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.tasks.await
@@ -552,6 +552,40 @@ class FirestoreService {
                     mapOf(
                         "deliveryStatus" to deliveryStatus,
                         "updatedAt" to Timestamp.now()
+                    )
+                )
+                .await()
+            true
+        } catch (e: Exception) {
+            false
+        }
+    }
+
+    /**
+     * Mark a delivery as complete: deliveryStatus -> DELIVERED AND
+     * status -> COMPLETED, in the one update a driver's firestore.rules
+     * grant actually allows (hasOnly ['status','deliveryStatus',
+     * 'updatedAt','completedAt']).
+     *
+     * Deliberately does NOT compute payout amounts here (unlike
+     * updateOrderStatus's COMPLETED branch) — a driver's own device isn't
+     * trusted to calculate what it and the restaurant get paid, the same
+     * reason a client can't self-report a Paynow payment as PAID. Payout
+     * calculation needs its own admin/Cloud-Function-driven path; until
+     * that exists, completed orders are visible everywhere but stay
+     * unsettled (isSettled stays at its default false).
+     */
+    suspend fun completeDelivery(orderId: String): Boolean {
+        return try {
+            val now = Timestamp.now()
+            db.collection(COLLECTION_ORDERS)
+                .document(orderId)
+                .update(
+                    mapOf(
+                        "deliveryStatus" to "DELIVERED",
+                        "status" to "COMPLETED",
+                        "completedAt" to now,
+                        "updatedAt" to now
                     )
                 )
                 .await()

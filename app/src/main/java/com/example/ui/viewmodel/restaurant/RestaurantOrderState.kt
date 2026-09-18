@@ -39,21 +39,32 @@ enum class RestaurantOrderStatus(
         value = "READY_FOR_PICKUP",
         displayName = "Ready for Pickup",
         description = "Order ready for driver pickup"
+    ),
+    COMPLETED(
+        value = "COMPLETED",
+        displayName = "Completed",
+        description = "Delivered — order complete"
     );
 
     companion object {
         /**
          * Get status from string value.
+         *
+         * Falls back to PAID for anything unrecognized — but COMPLETED is
+         * a real, expected value here (set once a driver finishes a
+         * delivery), not an unknown one. Before this entry existed, a
+         * completed order silently fell back to PAID and re-rendered with
+         * Accept/Reject buttons as if it were a brand new order.
          */
         fun fromString(value: String): RestaurantOrderStatus {
             return entries.find { it.value == value } ?: PAID
         }
-        
+
         /**
          * Get statuses visible to restaurant.
          */
         fun restaurantVisibleStatuses(): List<RestaurantOrderStatus> {
-            return listOf(PAID, ACCEPTED, REJECTED, PREPARING, READY_FOR_PICKUP)
+            return listOf(PAID, ACCEPTED, REJECTED, PREPARING, READY_FOR_PICKUP, COMPLETED)
         }
         
         /**
