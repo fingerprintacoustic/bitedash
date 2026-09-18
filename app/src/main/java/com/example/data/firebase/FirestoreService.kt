@@ -714,6 +714,18 @@ class FirestoreService {
         }
     }
 
+    suspend fun updateDriverField(driverId: String, field: String, value: Any): Boolean {
+        return try {
+            db.collection(COLLECTION_DRIVERS)
+                .document(driverId)
+                .update(field, value, "updatedAt", Timestamp.now())
+                .await()
+            true
+        } catch (e: Exception) {
+            false
+        }
+    }
+
     suspend fun updateDriver(driver: FirestoreDriver): Boolean {
         return try {
             db.collection(COLLECTION_DRIVERS)

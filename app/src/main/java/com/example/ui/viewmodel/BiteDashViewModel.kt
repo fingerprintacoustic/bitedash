@@ -398,6 +398,12 @@ viewModelScope.launch {
         }
     }
 
+    fun approveDriver(driverId: String) {
+        viewModelScope.launch {
+            firestoreService.updateDriverField(driverId, "isApproved", true)
+        }
+    }
+
     fun updateRestaurantStaff(restaurantId: String, staffEmails: List<String>) {
         viewModelScope.launch {
             firestoreService.updateRestaurantField(restaurantId, "staffEmails", staffEmails)

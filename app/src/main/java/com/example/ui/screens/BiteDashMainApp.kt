@@ -2271,8 +2271,27 @@ fun AdminPortalOverlay(
                                                     verticalAlignment = Alignment.CenterVertically
                                                 ) {
                                                     Column(modifier = Modifier.weight(1f)) {
-                                                        Text(d.name, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium)
+                                                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                                            Text(d.name, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium)
+                                                            if (!d.isApproved) {
+                                                                Badge(containerColor = Color(0xFFF59E0B), contentColor = Color.White) {
+                                                                    Text("Pending", modifier = Modifier.padding(horizontal = 6.dp, vertical = 1.dp), fontSize = 9.sp)
+                                                                }
+                                                            }
+                                                        }
                                                         Text("Phone: ${d.phone} • Vehicle: ${d.vehicle}", fontSize = 12.sp, color = Color.Gray)
+                                                    }
+                                                    if (!d.isApproved) {
+                                                        IconButton(
+                                                            onClick = { viewModel.approveDriver(d.id) },
+                                                            modifier = Modifier.testTag("approve_driver_${d.id}")
+                                                        ) {
+                                                            Icon(
+                                                                imageVector = Icons.Default.Check,
+                                                                contentDescription = "Approve Rider",
+                                                                tint = Color(0xFF16A34A)
+                                                            )
+                                                        }
                                                     }
                                                     var showManageAsDriverConfirm by remember { mutableStateOf(false) }
                                                     IconButton(
@@ -3678,11 +3697,32 @@ fun RoleSelectionGate(
                         !myDriverChecked -> {
                             CircularProgressIndicator()
                         }
-                        myDriver != null -> {
+                        myDriver != null && myDriver!!.isApproved -> {
                             LaunchedEffect(myDriver!!.id) {
                                 viewModel.setProfile(UserProfile.Driver(myDriver!!.id, myDriver!!.name, currentUid ?: ""))
                             }
                             CircularProgressIndicator()
+                        }
+                        myDriver != null && !myDriver!!.isApproved -> {
+                            // Registered, but not yet approved — mirrors the
+                            // restaurant approval gate. Unlike a pending
+                            // restaurant (still browsable, just dimmed), a
+                            // pending driver has nothing useful to do yet, so
+                            // this blocks entry to the dashboard entirely
+                            // instead of a banner — enforced server-side too,
+                            // by firestore.rules on the delivery-claim write.
+                            Text(
+                                text = "Registration Submitted",
+                                fontWeight = FontWeight.Bold,
+                                style = MaterialTheme.typography.titleMedium,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                            Text(
+                                text = "Your rider profile is awaiting admin approval. You'll be able to see and claim deliveries once approved — check back soon.",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = Color.Gray,
+                                textAlign = TextAlign.Center
+                            )
                         }
                         else -> {
                             var setupName by remember { mutableStateOf("") }
@@ -3761,7 +3801,8 @@ fun RoleSelectionGate(
                                                         phone = setupPhone,
                                                         vehicle = setupVehicle,
                                                         userId = currentUid,
-                                                        isAvailable = true
+                                                        isAvailable = true,
+                                                        isApproved = false
                                                     )
                                                 )
                                                 submitting = false

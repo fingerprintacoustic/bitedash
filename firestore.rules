@@ -26,6 +26,22 @@ service cloud.firestore {
         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'driver';
     }
 
+    // A driver whose own drivers/{uid} profile has been approved by an
+    // admin. Self-registered drivers start with isApproved == false —
+    // this gates delivery discovery/claiming so a brand-new, unvetted
+    // signup can't start picking up paid orders before an admin has had
+    // a chance to review them, mirroring the restaurant approval gate.
+    // Checks "!= false" rather than "== true": driver documents created
+    // before this field existed have no isApproved value at all, and
+    // those pre-existing drivers (already trusted, already delivering)
+    // must not suddenly get locked out — only an explicit false (which
+    // is all self-registration ever writes) blocks.
+    function isApprovedDriver() {
+      return isDriver() &&
+        exists(/databases/$(database)/documents/drivers/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/drivers/$(request.auth.uid)).data.isApproved != false;
+    }
+
     // A restaurant's owner (by UID) or an extra staff member the owner
     // added (by email, since we can't look up a UID from an email
     // client-side). Emails are stored lowercase and compared lowercase
@@ -73,6 +89,19 @@ service cloud.firestore {
       // Only authenticated users can list restaurants
       allow list: if isAuthenticated();
       
+      // A restaurant-role account can create its own restaurant listing,
+      // self-linked via ownerUserId, pending admin approval — mirroring
+      // driver self-registration. Previously the only create rule below
+      // was admin-only, so "Create My Restaurant" was rejected
+      // server-side for every non-admin account even after reaching that
+      // screen; this was masked because the role-selection tab bug meant
+      // real restaurant signups almost never got that far to notice.
+      // isApproved must be false on self-create — same reasoning as the
+      // driver create rule above, so a client can't just self-approve.
+      allow create: if isAuthenticated() &&
+        request.resource.data.ownerUserId == request.auth.uid &&
+        request.resource.data.isApproved == false;
+
       // Restaurant owners can update anything on their own restaurant.
       // Staff (added by the owner via staffEmails) can update everything
       // except who owns the restaurant or who else has staff access —
@@ -140,7 +169,7 @@ service cloud.firestore {
       // Drivers can read unclaimed deliveries so they have something to
       // claim in the first place (getAvailableDeliveriesFlow queries
       // deliveryStatus == "UNASSIGNED" across all restaurants).
-      allow read: if isDriver() && resource.data.deliveryStatus == 'UNASSIGNED';
+      allow read: if isApprovedDriver() && resource.data.deliveryStatus == 'UNASSIGNED';
       
       // Admin can read all orders
       allow read: if isAdmin();
@@ -157,7 +186,7 @@ service cloud.firestore {
       
       // A driver claiming an unassigned, ready delivery (assignDriverToOrder):
       // sets driverId to their own uid, driverName, and deliveryStatus.
-      allow update: if isDriver() &&
+      allow update: if isApprovedDriver() &&
         resource.data.deliveryStatus == 'UNASSIGNED' &&
         resource.data.driverId == null &&
         request.resource.data.driverId == request.auth.uid &&
@@ -225,9 +254,13 @@ service cloud.firestore {
 
       // A driver-role account can create its own profile, self-linked by
       // using their Firebase UID as the document ID — no admin bottleneck
-      // required to register.
+      // required to register. Must self-register as pending (isApproved
+      // == false) — otherwise a client could just set isApproved: true
+      // itself and skip admin review entirely; the app's own UI already
+      // only ever submits false, this is the server-side backstop.
       allow create: if isAuthenticated() && driverId == request.auth.uid &&
-        request.resource.data.userId == request.auth.uid;
+        request.resource.data.userId == request.auth.uid &&
+        request.resource.data.isApproved == false;
       
       // Drivers can update their own availability and location
       allow update: if isAuthenticated() && resource.data.userId == request.auth.uid &&

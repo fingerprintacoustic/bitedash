@@ -81,6 +81,7 @@ fun DriverEntity.toFirestoreDriver(): FirestoreDriver {
         phone = phone,
         vehicle = vehicle,
         isAvailable = isAvailable,
+        isApproved = isApproved,
         isActive = true
     )
 }
@@ -91,6 +92,7 @@ fun FirestoreDriver.toRoomEntity(): DriverEntity {
         name = name,
         phone = phone,
         vehicle = vehicle,
-        isAvailable = isAvailable
+        isAvailable = isAvailable,
+        isApproved = isApproved
     )
 }
