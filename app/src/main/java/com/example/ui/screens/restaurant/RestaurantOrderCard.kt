@@ -144,6 +144,7 @@ private fun OrderStatusChip(status: RestaurantOrderStatus) {
         RestaurantOrderStatus.REJECTED -> Icons.Default.Cancel to MaterialTheme.colorScheme.error
         RestaurantOrderStatus.PREPARING -> Icons.Default.Restaurant to MaterialTheme.colorScheme.tertiary
         RestaurantOrderStatus.READY_FOR_PICKUP -> Icons.Default.Pending to MaterialTheme.colorScheme.secondary
+        RestaurantOrderStatus.COMPLETED -> Icons.Default.CheckCircle to MaterialTheme.colorScheme.tertiary
         else -> Icons.Default.Pending to MaterialTheme.colorScheme.onSurfaceVariant
     }
 
@@ -573,9 +574,10 @@ private fun StatusBadge(status: RestaurantOrderStatus) {
         RestaurantOrderStatus.REJECTED -> Icons.Default.Cancel to MaterialTheme.colorScheme.error
         RestaurantOrderStatus.PREPARING -> Icons.Default.Restaurant to MaterialTheme.colorScheme.tertiary
         RestaurantOrderStatus.READY_FOR_PICKUP -> Icons.Default.Pending to MaterialTheme.colorScheme.secondary
+        RestaurantOrderStatus.COMPLETED -> Icons.Default.CheckCircle to MaterialTheme.colorScheme.tertiary
         else -> Icons.Default.Pending to MaterialTheme.colorScheme.onSurfaceVariant
     }
-    
+
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.Center,
