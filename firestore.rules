@@ -55,8 +55,13 @@ service cloud.firestore {
         request.resource.data.diff(resource.data).affectedKeys()
           .hasOnly(['displayName', 'phone', 'address', 'ecoCashNumber', 'oneMoneyNumber', 'updatedAt']);
       
-      // Admin can manage all user profiles
-      allow write: if isAdmin();
+      // Admin can read and manage all user profiles. Previously this was
+      // write-only — admin had no read/list grant on this collection at
+      // all, so any admin screen listing users (getUsersFlow /
+      // getUsersFlowByRole) would come back empty even for a real admin,
+      // the same way the drivers collection silently empties out for
+      // non-admin callers.
+      allow read, write: if isAdmin();
     }
     
     // ==================== RESTAURANTS ====================
