@@ -31,6 +31,8 @@ data class PaymentTransaction(
     val status: String = PaymentStatus.PENDING.value,
     val method: String = PaymentMethod.ECO_CASH.value,
     val pollUrl: String = "",
+    /** Paynow-hosted checkout page the customer must open to complete payment. Not persisted. */
+    val browserUrl: String = "",
     val paynowReference: String = "",
     val mobileMoneyNumber: String = "",
     val errorMessage: String = "",

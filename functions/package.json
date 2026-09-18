@@ -1,0 +1,25 @@
+{
+  "name": "bitedash-functions",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Server-side Paynow integration for BiteDash (payment initiation, status verification, and the Paynow result webhook).",
+  "main": "lib/index.js",
+  "engines": {
+    "node": "20"
+  },
+  "scripts": {
+    "build": "tsc",
+    "build:watch": "tsc --watch",
+    "lint": "tsc --noEmit",
+    "serve": "npm run build && firebase emulators:start --only functions,firestore",
+    "shell": "npm run build && firebase functions:shell",
+    "deploy": "firebase deploy --only functions"
+  },
+  "dependencies": {
+    "firebase-admin": "^12.6.0",
+    "firebase-functions": "^6.0.1"
+  },
+  "devDependencies": {
+    "typescript": "^5.5.4"
+  }
+}
