@@ -2271,8 +2271,27 @@ fun AdminPortalOverlay(
                                                     verticalAlignment = Alignment.CenterVertically
                                                 ) {
                                                     Column(modifier = Modifier.weight(1f)) {
-                                                        Text(d.name, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium)
+                                                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                                            Text(d.name, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium)
+                                                            if (!d.isApproved) {
+                                                                Badge(containerColor = Color(0xFFF59E0B), contentColor = Color.White) {
+                                                                    Text("Pending", modifier = Modifier.padding(horizontal = 6.dp, vertical = 1.dp), fontSize = 9.sp)
+                                                                }
+                                                            }
+                                                        }
                                                         Text("Phone: ${d.phone} • Vehicle: ${d.vehicle}", fontSize = 12.sp, color = Color.Gray)
+                                                    }
+                                                    if (!d.isApproved) {
+                                                        IconButton(
+                                                            onClick = { viewModel.approveDriver(d.id) },
+                                                            modifier = Modifier.testTag("approve_driver_${d.id}")
+                                                        ) {
+                                                            Icon(
+                                                                imageVector = Icons.Default.Check,
+                                                                contentDescription = "Approve Rider",
+                                                                tint = Color(0xFF16A34A)
+                                                            )
+                                                        }
                                                     }
                                                     var showManageAsDriverConfirm by remember { mutableStateOf(false) }
                                                     IconButton(
@@ -3276,13 +3295,42 @@ fun RoleSelectionGate(
     
     // Check if user is authenticated and use their role
     val isAuthenticated = authViewModel?.isAuthenticated() == true
+    val currentUid = authViewModel?.getCurrentUserId()
+    // getCurrentRole() reads the `role` field off the user's own Firestore
+    // document, defaulting to Customer when that field is missing — which
+    // is the case for some real restaurant owners in this database (set up
+    // before the current sign-up flow always wrote `role`, or added
+    // directly in Firestore). Without this fallback those owners would be
+    // silently treated as customers and never reach their own dashboard,
+    // even though their restaurant document itself is fine. If a
+    // restaurant is actually owned by this account, trust that over a
+    // missing/stale role field.
+    val ownsARestaurant = !currentUid.isNullOrBlank() && restaurants.any { it.ownerUserId == currentUid }
     val currentUserRole = if (isAuthenticated) {
-        authViewModel?.getCurrentRole() ?: userRole
+        val storedRole = authViewModel?.getCurrentRole() ?: userRole
+        if (storedRole == UserRole.CUSTOMER && ownsARestaurant) UserRole.RESTAURANT else storedRole
     } else {
         userRole
     }
 
-    var activeSelectionTab by remember { mutableStateOf(0) } // 0: Customer, 1: Restaurant, 2: Rider, 3: Admin
+    // Lands on the tab matching the account's actual signed-up role instead
+    // of always defaulting to Customer. Previously every account — including
+    // ones that signed up as Restaurant or Driver — opened on the Customer
+    // tab and had to notice and manually switch tabs to find "Set Up Your
+    // Restaurant" / driver registration. Accounts that missed that step
+    // ended up with a role and a business name on their user profile but no
+    // actual restaurant (or driver) document ever created — invisible
+    // everywhere a real listing would show up.
+    var activeSelectionTab by remember(currentUserRole) {
+        mutableStateOf(
+            when (currentUserRole) {
+                UserRole.RESTAURANT -> 1
+                UserRole.DRIVER -> 2
+                UserRole.ADMIN -> 3
+                UserRole.CUSTOMER -> 0
+            }
+        )
+    } // 0: Customer, 1: Restaurant, 2: Rider, 3: Admin
     // Admin tab is only ever shown to accounts whose Firestore `role` is
     // actually "admin" — it used to be revealed by tapping the logo 5
     // times, with access granted via a hardcoded passcode (2026/1980/9999/
@@ -3476,6 +3524,12 @@ fun RoleSelectionGate(
                             var setupFee by remember { mutableStateOf("2.00") }
                             var setupTime by remember { mutableStateOf("20-30 min") }
                             var setupError by remember { mutableStateOf("") }
+                            // Creating a restaurant round-trips through Firestore before
+                            // myRestaurant (above) picks it up and this screen switches
+                            // away — without this guard, a second tap on "Create My
+                            // Restaurant" during that window fires addRestaurant() again
+                            // and creates a duplicate restaurant document.
+                            var isSubmitting by remember { mutableStateOf(false) }
 
                             Text(
                                 text = "Set Up Your Restaurant",
@@ -3562,11 +3616,15 @@ fun RoleSelectionGate(
 
                                 Button(
                                     onClick = {
-                                        if (setupName.isBlank() || setupLoc.isBlank()) {
+                                        if (isSubmitting) {
+                                            // Already submitted — ignore extra taps instead of
+                                            // creating another duplicate restaurant document.
+                                        } else if (setupName.isBlank() || setupLoc.isBlank()) {
                                             setupError = "Please fill in your restaurant name and location."
                                         } else if (currentUid.isNullOrBlank()) {
                                             setupError = "You need to be signed in to set up a restaurant."
                                         } else {
+                                            isSubmitting = true
                                             viewModel.addRestaurant(
                                                 com.example.model.Restaurant(
                                                     id = "res_" + System.currentTimeMillis(),
@@ -3590,10 +3648,15 @@ fun RoleSelectionGate(
                                             )
                                         }
                                     },
+                                    enabled = !isSubmitting,
                                     modifier = Modifier.fillMaxWidth().testTag("restaurant_setup_submit"),
                                     shape = RoundedCornerShape(12.dp)
                                 ) {
-                                    Text("Create My Restaurant")
+                                    if (isSubmitting) {
+                                        CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp, color = Color.White)
+                                    } else {
+                                        Text("Create My Restaurant")
+                                    }
                                 }
                             }
                         }
@@ -3634,11 +3697,32 @@ fun RoleSelectionGate(
                         !myDriverChecked -> {
                             CircularProgressIndicator()
                         }
-                        myDriver != null -> {
+                        myDriver != null && myDriver!!.isApproved -> {
                             LaunchedEffect(myDriver!!.id) {
                                 viewModel.setProfile(UserProfile.Driver(myDriver!!.id, myDriver!!.name, currentUid ?: ""))
                             }
                             CircularProgressIndicator()
+                        }
+                        myDriver != null && !myDriver!!.isApproved -> {
+                            // Registered, but not yet approved — mirrors the
+                            // restaurant approval gate. Unlike a pending
+                            // restaurant (still browsable, just dimmed), a
+                            // pending driver has nothing useful to do yet, so
+                            // this blocks entry to the dashboard entirely
+                            // instead of a banner — enforced server-side too,
+                            // by firestore.rules on the delivery-claim write.
+                            Text(
+                                text = "Registration Submitted",
+                                fontWeight = FontWeight.Bold,
+                                style = MaterialTheme.typography.titleMedium,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                            Text(
+                                text = "Your rider profile is awaiting admin approval. You'll be able to see and claim deliveries once approved — check back soon.",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = Color.Gray,
+                                textAlign = TextAlign.Center
+                            )
                         }
                         else -> {
                             var setupName by remember { mutableStateOf("") }
@@ -3717,7 +3801,8 @@ fun RoleSelectionGate(
                                                         phone = setupPhone,
                                                         vehicle = setupVehicle,
                                                         userId = currentUid,
-                                                        isAvailable = true
+                                                        isAvailable = true,
+                                                        isApproved = false
                                                     )
                                                 )
                                                 submitting = false

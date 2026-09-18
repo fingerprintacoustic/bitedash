@@ -11,5 +11,6 @@ data class DriverEntity(
     val name: String,
     val phone: String,
     val vehicle: String, // e.g. "Bicycle", "Motorbike", "Car"
-    val isAvailable: Boolean = true
+    val isAvailable: Boolean = true,
+    val isApproved: Boolean = true // false = pending admin review, can't claim deliveries until approved
 )

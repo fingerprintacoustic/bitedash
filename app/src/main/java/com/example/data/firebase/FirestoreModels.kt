@@ -233,6 +233,8 @@ data class FirestoreDriver(
     val userId: String = "", // Firebase Auth UID of the account that owns this driver profile
     @get:PropertyName("isAvailable") @set:PropertyName("isAvailable")
     var isAvailable: Boolean = true,
+    @get:PropertyName("isApproved") @set:PropertyName("isApproved")
+    var isApproved: Boolean = true, // false = pending admin review, can't claim deliveries until approved
     @get:PropertyName("isActive") @set:PropertyName("isActive")
     var isActive: Boolean = true,
     // Payout info

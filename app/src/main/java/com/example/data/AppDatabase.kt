@@ -28,7 +28,11 @@ import com.example.data.entity.DriverEntity
 // order creation was wired up to actually write through to Firestore
 // (previously orders only ever existed in this local Room cache, so no
 // restaurant could ever see or accept a customer's order).
-@Database(entities = [OrderEntity::class, RestaurantEntity::class, DriverEntity::class], version = 9, exportSchema = false)
+// version bumped 9 -> 10: DriverEntity gained isApproved, mirroring
+// RestaurantEntity's approval gate — self-registered drivers now start
+// pending until an admin approves them, instead of being able to claim
+// deliveries immediately with zero vetting.
+@Database(entities = [OrderEntity::class, RestaurantEntity::class, DriverEntity::class], version = 10, exportSchema = false)
 @TypeConverters(Converters::class)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun orderDao(): OrderDao
