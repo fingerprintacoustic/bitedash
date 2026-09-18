@@ -3276,8 +3276,20 @@ fun RoleSelectionGate(
     
     // Check if user is authenticated and use their role
     val isAuthenticated = authViewModel?.isAuthenticated() == true
+    val currentUid = authViewModel?.getCurrentUserId()
+    // getCurrentRole() reads the `role` field off the user's own Firestore
+    // document, defaulting to Customer when that field is missing — which
+    // is the case for some real restaurant owners in this database (set up
+    // before the current sign-up flow always wrote `role`, or added
+    // directly in Firestore). Without this fallback those owners would be
+    // silently treated as customers and never reach their own dashboard,
+    // even though their restaurant document itself is fine. If a
+    // restaurant is actually owned by this account, trust that over a
+    // missing/stale role field.
+    val ownsARestaurant = !currentUid.isNullOrBlank() && restaurants.any { it.ownerUserId == currentUid }
     val currentUserRole = if (isAuthenticated) {
-        authViewModel?.getCurrentRole() ?: userRole
+        val storedRole = authViewModel?.getCurrentRole() ?: userRole
+        if (storedRole == UserRole.CUSTOMER && ownsARestaurant) UserRole.RESTAURANT else storedRole
     } else {
         userRole
     }
