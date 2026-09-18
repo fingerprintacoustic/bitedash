@@ -10,6 +10,11 @@ enum class RestaurantOrderStatus(
     val displayName: String,
     val description: String
 ) {
+    PENDING_ACCEPTANCE(
+        value = "PENDING_ACCEPTANCE",
+        displayName = "Pending Acceptance",
+        description = "New order awaiting restaurant action"
+    ),
     PENDING_PAYMENT(
         value = "PENDING_PAYMENT",
         displayName = "Pending Payment",
@@ -40,38 +45,49 @@ enum class RestaurantOrderStatus(
         displayName = "Ready for Pickup",
         description = "Order ready for driver pickup"
     ),
+    OUT_FOR_DELIVERY(
+        value = "OUT_FOR_DELIVERY",
+        displayName = "Out for Delivery",
+        description = "Order is on its way with the driver"
+    ),
     COMPLETED(
         value = "COMPLETED",
         displayName = "Completed",
         description = "Delivered — order complete"
+    ),
+    CANCELLED(
+        value = "CANCELLED",
+        displayName = "Cancelled",
+        description = "Order was cancelled"
     );
 
     companion object {
         /**
          * Get status from string value.
          *
-         * Falls back to PAID for anything unrecognized — but COMPLETED is
-         * a real, expected value here (set once a driver finishes a
-         * delivery), not an unknown one. Before this entry existed, a
-         * completed order silently fell back to PAID and re-rendered with
-         * Accept/Reject buttons as if it were a brand new order.
+         * Falls back to PENDING_ACCEPTANCE for anything unrecognized —
+         * that's the real starting status every checkout-created order
+         * has (see FirestoreOrder.status default), so an unexpected value
+         * lands on "new order awaiting action" rather than falsely
+         * claiming payment (previously this fell back to PAID, which made
+         * a brand-new, unpaid Cash on Delivery order display as "Paid").
          */
         fun fromString(value: String): RestaurantOrderStatus {
-            return entries.find { it.value == value } ?: PAID
+            return entries.find { it.value == value } ?: PENDING_ACCEPTANCE
         }
 
         /**
          * Get statuses visible to restaurant.
          */
         fun restaurantVisibleStatuses(): List<RestaurantOrderStatus> {
-            return listOf(PAID, ACCEPTED, REJECTED, PREPARING, READY_FOR_PICKUP, COMPLETED)
+            return listOf(PENDING_ACCEPTANCE, PAID, ACCEPTED, REJECTED, PREPARING, READY_FOR_PICKUP, OUT_FOR_DELIVERY, COMPLETED, CANCELLED)
         }
-        
+
         /**
          * Get actionable statuses for restaurant.
          */
         fun restaurantActionableStatuses(): List<RestaurantOrderStatus> {
-            return listOf(PAID)
+            return listOf(PENDING_ACCEPTANCE, PAID)
         }
     }
 }

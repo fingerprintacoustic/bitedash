@@ -5,7 +5,8 @@ data class MenuItem(
     val name: String,
     val description: String,
     val price: Double, // in USD
-    val category: String
+    val category: String,
+    val isAvailable: Boolean = true // false = "Sold Out" — hidden from customers, still visible/editable by the owner
 )
 
 data class Restaurant(

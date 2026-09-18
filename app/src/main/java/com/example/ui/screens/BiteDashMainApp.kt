@@ -43,6 +43,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.filled.Visibility
@@ -61,10 +62,13 @@ import com.example.ui.viewmodel.UserRole
 import com.example.ui.viewmodel.restaurant.RestaurantOrderViewModel
 import com.example.ui.viewmodel.driver.DriverDeliveryViewModel
 import com.example.data.firebase.FirestoreService
+import com.example.data.firebase.toMenuItem
 import com.example.ui.screens.auth.AuthenticationGate
+import com.example.ui.screens.auth.ProfileScreen
 import com.example.ui.screens.restaurant.RestaurantOrdersScreen
 import com.example.ui.screens.driver.DriverOrdersScreen
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.first
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -102,6 +106,7 @@ fun BiteDashMainApp(
         else -> {
             CustomerMainScaffold(
                 viewModel = viewModel,
+                authViewModel = authViewModel,
                 currentProfile = profile,
                 modifier = modifier
             )
@@ -113,6 +118,7 @@ fun BiteDashMainApp(
 @Composable
 fun CustomerMainScaffold(
     viewModel: BiteDashViewModel,
+    authViewModel: AuthViewModel? = null,
     currentProfile: UserProfile,
     modifier: Modifier = Modifier
 ) {
@@ -120,6 +126,7 @@ fun CustomerMainScaffold(
     val activeOrder by viewModel.activeOrder.collectAsStateWithLifecycle()
     val cart by viewModel.cart.collectAsStateWithLifecycle()
     var isAdminPortalOpen by remember { mutableStateOf(false) }
+    var isProfileOpen by remember { mutableStateOf(false) }
 
     Scaffold(
         modifier = modifier.fillMaxSize(),
@@ -199,6 +206,18 @@ fun CustomerMainScaffold(
                             Icon(
                                 imageVector = Icons.Default.Settings,
                                 contentDescription = "Admin Portal Control",
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                    }
+                    if (authViewModel != null) {
+                        IconButton(
+                            onClick = { isProfileOpen = true },
+                            modifier = Modifier.testTag("profile_toggle_btn")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Person,
+                                contentDescription = "Profile",
                                 tint = MaterialTheme.colorScheme.primary
                             )
                         }
@@ -300,8 +319,38 @@ fun CustomerMainScaffold(
     if (isAdminPortalOpen) {
         AdminPortalOverlay(
             viewModel = viewModel,
+            authViewModel = authViewModel,
             onDismiss = { isAdminPortalOpen = false }
         )
+    }
+
+    if (isProfileOpen && authViewModel != null) {
+        Dialog(
+            onDismissRequest = { isProfileOpen = false },
+            properties = DialogProperties(usePlatformDefaultWidth = false)
+        ) {
+            Surface(modifier = Modifier.fillMaxSize()) {
+                Column(modifier = Modifier.fillMaxSize()) {
+                    TopAppBar(
+                        title = { Text("Profile") },
+                        navigationIcon = {
+                            IconButton(onClick = { isProfileOpen = false }) {
+                                Icon(Icons.Default.ArrowBack, contentDescription = "Close")
+                            }
+                        }
+                    )
+                    ProfileScreen(
+                        authViewModel = authViewModel,
+                        onSignOut = {
+                            isProfileOpen = false
+                            authViewModel.signOut()
+                            viewModel.setProfile(UserProfile.Idle)
+                        },
+                        onUpdateProfile = { /* ProfileScreen shows its own inline success message */ }
+                    )
+                }
+            }
+        }
     }
 }
 
@@ -1961,6 +2010,7 @@ fun formatTimestamp(timestamp: Long): String {
 @Composable
 fun AdminPortalOverlay(
     viewModel: BiteDashViewModel,
+    authViewModel: AuthViewModel? = null,
     onDismiss: () -> Unit
 ) {
     var activeSubTab by remember { mutableStateOf(0) } // 0: Restaurants, 1: Drivers, 2: Audits
@@ -2065,6 +2115,12 @@ fun AdminPortalOverlay(
                         onClick = { activeSubTab = 5 },
                         text = { Text("Orders", fontSize = 13.sp) },
                         modifier = Modifier.testTag("admin_tab_orders")
+                    )
+                    Tab(
+                        selected = activeSubTab == 6,
+                        onClick = { activeSubTab = 6 },
+                        text = { Text("Users", fontSize = 13.sp) },
+                        modifier = Modifier.testTag("admin_tab_users")
                     )
                 }
 
@@ -2586,6 +2642,10 @@ fun AdminPortalOverlay(
                             // Real order management — cancel a stuck order
                             AdminOrdersTab(viewModel = viewModel)
                         }
+                        6 -> {
+                            // Look an account up by email and change its role
+                            UserRoleManagementTab(authViewModel = authViewModel)
+                        }
                     }
                 }
             }
@@ -2789,6 +2849,21 @@ fun AdminPortalOverlay(
                     }
 
                     item {
+                        // Save is disabled until both requirements below are
+                        // met — previously that just looked broken, with no
+                        // indication of what was missing.
+                        val missing = buildList {
+                            if (restName.isBlank()) add("a brand name")
+                            if (addedMenuItems.isEmpty()) add("at least one menu item")
+                        }
+                        if (missing.isNotEmpty()) {
+                            Text(
+                                text = "Add " + missing.joinToString(" and ") + " to save.",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.error,
+                                modifier = Modifier.padding(bottom = 4.dp)
+                            )
+                        }
                         Divider(color = Color.LightGray.copy(alpha = 0.3f), modifier = Modifier.padding(vertical = 4.dp))
                         Row(
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -3007,7 +3082,23 @@ fun EditMenuDialog(
     viewModel: BiteDashViewModel,
     onDismiss: () -> Unit
 ) {
-    val localItems = remember { mutableStateListOf<MenuItem>().apply { addAll(restaurant.menuItems) } }
+    // Loaded via getAllMenuItemsFlow rather than restaurant.menuItems —
+    // the latter is the already-synced, available-only list, so a
+    // previously sold-out item would never appear here to be toggled
+    // back on.
+    val localItems = remember { mutableStateListOf<MenuItem>() }
+    var isLoadingMenu by remember { mutableStateOf(true) }
+    LaunchedEffect(restaurant.id) {
+        isLoadingMenu = true
+        val items = try {
+            FirestoreService().getAllMenuItemsFlow(restaurant.id).first().map { it.toMenuItem() }
+        } catch (e: Exception) {
+            restaurant.menuItems
+        }
+        localItems.clear()
+        localItems.addAll(items)
+        isLoadingMenu = false
+    }
 
     var newName by remember { mutableStateOf("") }
     var newPrice by remember { mutableStateOf("") }
@@ -3158,7 +3249,16 @@ fun EditMenuDialog(
                         )
                     }
 
-                    if (localItems.isEmpty()) {
+                    if (isLoadingMenu) {
+                        item {
+                            Box(
+                                modifier = Modifier.fillMaxWidth().padding(vertical = 24.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                CircularProgressIndicator()
+                            }
+                        }
+                    } else if (localItems.isEmpty()) {
                         item {
                             Box(
                                 modifier = Modifier
@@ -3193,6 +3293,24 @@ fun EditMenuDialog(
                                         ) {
                                             Icon(imageVector = Icons.Default.Delete, contentDescription = "Delete", tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(18.dp))
                                         }
+                                    }
+
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(
+                                            text = if (item.isAvailable) "Available" else "Sold Out",
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = if (item.isAvailable) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error
+                                        )
+                                        Switch(
+                                            checked = item.isAvailable,
+                                            onCheckedChange = { checked -> localItems[idx] = item.copy(isAvailable = checked) },
+                                            modifier = Modifier.testTag("sold_out_switch_$idx")
+                                        )
                                     }
 
                                     OutlinedTextField(
@@ -3272,6 +3390,7 @@ fun EditMenuDialog(
                             viewModel.updateRestaurantMenu(restaurant.id, localItems.toList())
                             onDismiss()
                         },
+                        enabled = !isLoadingMenu,
                         modifier = Modifier.weight(1f).testTag("save_menu_editor_button")
                     ) {
                         Text("Save Menu 💾")
@@ -4217,6 +4336,7 @@ fun RestaurantOwnerDashboard(
                                             Text("Order #${order.orderId.take(6)}", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleSmall)
                                             Badge(
                                                 containerColor = when (order.status) {
+                                                    com.example.ui.viewmodel.restaurant.RestaurantOrderStatus.PENDING_ACCEPTANCE,
                                                     com.example.ui.viewmodel.restaurant.RestaurantOrderStatus.PAID -> MaterialTheme.colorScheme.tertiaryContainer
                                                     com.example.ui.viewmodel.restaurant.RestaurantOrderStatus.PREPARING -> MaterialTheme.colorScheme.primaryContainer
                                                     else -> MaterialTheme.colorScheme.secondaryContainer
@@ -4245,6 +4365,7 @@ fun RestaurantOwnerDashboard(
                                             verticalAlignment = Alignment.CenterVertically
                                         ) {
                                             when (order.status) {
+                                                com.example.ui.viewmodel.restaurant.RestaurantOrderStatus.PENDING_ACCEPTANCE,
                                                 com.example.ui.viewmodel.restaurant.RestaurantOrderStatus.PENDING_PAYMENT,
                                                 com.example.ui.viewmodel.restaurant.RestaurantOrderStatus.PAID -> {
                                                     Button(
@@ -4900,6 +5021,146 @@ private fun PayoutsSummaryTab(viewModel: BiteDashViewModel) {
                     }
                 }
             }
+        }
+    }
+}
+
+/**
+ * Admin "Change User Role" tab. Restaurant/rider empty-state screens tell
+ * people to "ask an admin to switch your account", but there was no admin
+ * action that could actually do that — this closes that gap: look an
+ * account up by email, then apply a new role via
+ * AuthViewModel.updateUserRole (which writes the `role` field on that
+ * account's own Firestore user document).
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun UserRoleManagementTab(authViewModel: AuthViewModel?) {
+    val scope = rememberCoroutineScope()
+    var email by remember { mutableStateOf("") }
+    var isLooking by remember { mutableStateOf(false) }
+    var lookupError by remember { mutableStateOf("") }
+    var foundUser by remember { mutableStateOf<com.example.data.firebase.FirestoreUser?>(null) }
+    var selectedRole by remember { mutableStateOf<UserRole?>(null) }
+
+    val successMessage by (authViewModel?.successMessage?.collectAsStateWithLifecycle() ?: remember { mutableStateOf<String?>(null) })
+    val errorMessage by (authViewModel?.errorMessage?.collectAsStateWithLifecycle() ?: remember { mutableStateOf<String?>(null) })
+    val isApplying by (authViewModel?.isLoading?.collectAsStateWithLifecycle() ?: remember { mutableStateOf(false) })
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(vertical = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        Text(
+            "Change a User's Role",
+            fontWeight = FontWeight.Bold,
+            style = MaterialTheme.typography.bodyMedium
+        )
+        Text(
+            "Look an account up by email, then switch it to Customer, Restaurant, Delivery Driver, or Administrator. This changes their role, not their existing restaurant/driver listings.",
+            fontSize = 11.sp,
+            color = Color.Gray
+        )
+
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            OutlinedTextField(
+                value = email,
+                onValueChange = { email = it },
+                label = { Text("Account Email") },
+                singleLine = true,
+                modifier = Modifier.weight(1f).testTag("admin_user_lookup_email")
+            )
+            Button(
+                onClick = {
+                    lookupError = ""
+                    foundUser = null
+                    selectedRole = null
+                    if (email.isBlank()) {
+                        lookupError = "Enter an email address."
+                    } else {
+                        isLooking = true
+                        scope.launch {
+                            val user = com.example.data.firebase.FirestoreService().getUserByEmail(email.trim())
+                            isLooking = false
+                            if (user != null) {
+                                foundUser = user
+                                selectedRole = UserRole.fromString(user.role)
+                            } else {
+                                lookupError = "No account found with that email."
+                            }
+                        }
+                    }
+                },
+                enabled = !isLooking,
+                modifier = Modifier.testTag("admin_user_lookup_button")
+            ) {
+                if (isLooking) {
+                    CircularProgressIndicator(modifier = Modifier.size(16.dp), color = Color.White, strokeWidth = 2.dp)
+                } else {
+                    Text("Look Up")
+                }
+            }
+        }
+
+        if (lookupError.isNotEmpty()) {
+            Text(lookupError, color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
+        }
+
+        val user = foundUser
+        if (user != null) {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f))
+            ) {
+                Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(user.displayName.ifBlank { "(no name)" }, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                    Text(user.email, fontSize = 12.sp, color = Color.Gray)
+                    Text("Current role: ${UserRole.fromString(user.role).displayName}", fontSize = 12.sp)
+
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text("New role:", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        UserRole.entries.forEach { role ->
+                            FilterChip(
+                                selected = selectedRole == role,
+                                onClick = { selectedRole = role },
+                                label = { Text(role.displayName, fontSize = 11.sp) },
+                                modifier = Modifier.testTag("admin_user_role_${role.value}")
+                            )
+                        }
+                    }
+
+                    Button(
+                        onClick = {
+                            val newRole = selectedRole
+                            if (newRole != null) {
+                                authViewModel?.updateUserRole(user.id, newRole)
+                            }
+                        },
+                        enabled = !isApplying && selectedRole != null && selectedRole?.value != user.role,
+                        modifier = Modifier.fillMaxWidth().testTag("admin_apply_role_button")
+                    ) {
+                        if (isApplying) {
+                            CircularProgressIndicator(modifier = Modifier.size(16.dp), color = Color.White, strokeWidth = 2.dp)
+                        } else {
+                            Text("Apply Role Change")
+                        }
+                    }
+                }
+            }
+        }
+
+        successMessage?.let {
+            Text(it, color = MaterialTheme.colorScheme.primary, fontSize = 12.sp)
+        }
+        errorMessage?.let {
+            Text(it, color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
         }
     }
 }

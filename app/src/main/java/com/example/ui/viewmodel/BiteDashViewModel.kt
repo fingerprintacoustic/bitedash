@@ -462,8 +462,14 @@ viewModelScope.launch {
                 }
 
                 // Replace the menu in Firestore: retire the old items, add the new ones.
+                // Uses getAllMenuItemsFlow (not getMenuItemsFlow, which only
+                // returns isAvailable == true items) so a previously
+                // sold-out item actually gets retired here too — otherwise
+                // it's never in this list to retire, never in
+                // updatedMenuItems to recreate, and just piles up as an
+                // orphaned document on every save.
                 val currentFirestoreItems = try {
-                    firestoreService.getMenuItemsFlow(restaurantId).first()
+                    firestoreService.getAllMenuItemsFlow(restaurantId).first()
                 } catch (e: Exception) {
                     emptyList()
                 }
