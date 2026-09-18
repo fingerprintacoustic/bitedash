@@ -254,6 +254,21 @@ class FirestoreService {
             }
     }
 
+    // Unlike getMenuItemsFlow, includes sold-out (isAvailable == false)
+    // items too — for the restaurant owner's own "Manage Menu" screen,
+    // where a sold-out item needs to stay visible so it can be toggled
+    // back on, not disappear the moment it's marked unavailable.
+    fun getAllMenuItemsFlow(restaurantId: String): Flow<List<FirestoreMenuItem>> {
+        return db.collection(COLLECTION_MENU_ITEMS)
+            .whereEqualTo("restaurantId", restaurantId)
+            .snapshots()
+            .map { snapshot ->
+                snapshot.documents.mapNotNull {
+                    it.toObjectOrNull<FirestoreMenuItem>(COLLECTION_MENU_ITEMS)
+                }
+            }
+    }
+
     fun getMenuItemsFlowByCategory(category: String): Flow<List<FirestoreMenuItem>> {
         return db.collection(COLLECTION_MENU_ITEMS)
             .whereEqualTo("category", category)

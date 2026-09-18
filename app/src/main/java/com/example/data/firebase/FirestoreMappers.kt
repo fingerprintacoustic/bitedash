@@ -39,7 +39,8 @@ fun MenuItem.toFirestoreMenuItem(restaurantId: String): FirestoreMenuItem {
         name = name,
         description = description,
         price = price,
-        category = category
+        category = category,
+        isAvailable = isAvailable
     )
 }
 
@@ -49,7 +50,8 @@ fun FirestoreMenuItem.toMenuItem(): MenuItem {
         name = name,
         description = description,
         price = price,
-        category = category
+        category = category,
+        isAvailable = isAvailable
     )
 }
 

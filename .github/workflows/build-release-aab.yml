@@ -14,7 +14,10 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
       - run: chmod +x gradlew
-      - run: cp .env.example .env
+      - name: Generate .env from secrets
+        run: |
+          echo "PAYNOW_INTEGRATION_ID=${{ secrets.PAYNOW_INTEGRATION_ID }}" >> .env
+          echo "PAYNOW_INTEGRATION_KEY=${{ secrets.PAYNOW_INTEGRATION_KEY }}" >> .env
 
       - name: Decode upload keystore
         run: echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > upload-keystore.jks

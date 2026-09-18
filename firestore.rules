@@ -123,7 +123,13 @@ service cloud.firestore {
     match /menu_items/{menuItemId} {
       // Anyone can read menu items (public menu viewing)
       allow read: if resource.data.isAvailable == true;
-      
+
+      // The owner (or their staff) can read their own full menu regardless
+      // of availability — without this, marking an item "Sold Out" made it
+      // permanently invisible even to its own restaurant, with no way to
+      // toggle it back on.
+      allow read: if isRestaurantOwnerOrStaff(resource.data.restaurantId);
+
       // Restaurant owners and their staff can manage menu items
       allow create: if isAuthenticated() && 
         exists(/databases/$(database)/documents/restaurants/$(request.resource.data.restaurantId)) &&
@@ -290,8 +296,12 @@ service cloud.firestore {
     // ==================== ADMIN SETTINGS ====================
     
     match /admin_settings/{settingsId} {
-      // Admin settings are readable by authenticated users (needed for app config)
-      allow read: if isAuthenticated();
+      // Admin-only. This document holds live Paynow/EcoCash/OneMoney/
+      // InnBucks credentials in plain text — "any authenticated user"
+      // (i.e. any customer or driver) previously meant any signed-in
+      // account could read real payment credentials straight out of
+      // Firestore.
+      allow read: if isAdmin();
       
       // Only admin can update settings
       allow write: if isAdmin();

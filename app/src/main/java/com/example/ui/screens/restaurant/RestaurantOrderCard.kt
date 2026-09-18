@@ -100,7 +100,11 @@ fun RestaurantOrderCard(
             
             // Action buttons based on order status
             when (order.status) {
-                RestaurantOrderStatus.PAID -> {
+                RestaurantOrderStatus.PENDING_ACCEPTANCE, RestaurantOrderStatus.PAID -> {
+                    // PENDING_ACCEPTANCE is the real starting status every
+                    // checkout-created order has — treated the same as PAID
+                    // here since both mean "new order awaiting restaurant
+                    // action."
                     ActionButtons(
                         isLoading = isLoading,
                         onAccept = onAccept,
@@ -145,6 +149,8 @@ private fun OrderStatusChip(status: RestaurantOrderStatus) {
         RestaurantOrderStatus.PREPARING -> Icons.Default.Restaurant to MaterialTheme.colorScheme.tertiary
         RestaurantOrderStatus.READY_FOR_PICKUP -> Icons.Default.Pending to MaterialTheme.colorScheme.secondary
         RestaurantOrderStatus.COMPLETED -> Icons.Default.CheckCircle to MaterialTheme.colorScheme.tertiary
+        RestaurantOrderStatus.OUT_FOR_DELIVERY -> Icons.Default.Pending to MaterialTheme.colorScheme.secondary
+        RestaurantOrderStatus.CANCELLED -> Icons.Default.Cancel to MaterialTheme.colorScheme.error
         else -> Icons.Default.Pending to MaterialTheme.colorScheme.onSurfaceVariant
     }
 
@@ -575,6 +581,8 @@ private fun StatusBadge(status: RestaurantOrderStatus) {
         RestaurantOrderStatus.PREPARING -> Icons.Default.Restaurant to MaterialTheme.colorScheme.tertiary
         RestaurantOrderStatus.READY_FOR_PICKUP -> Icons.Default.Pending to MaterialTheme.colorScheme.secondary
         RestaurantOrderStatus.COMPLETED -> Icons.Default.CheckCircle to MaterialTheme.colorScheme.tertiary
+        RestaurantOrderStatus.OUT_FOR_DELIVERY -> Icons.Default.Pending to MaterialTheme.colorScheme.secondary
+        RestaurantOrderStatus.CANCELLED -> Icons.Default.Cancel to MaterialTheme.colorScheme.error
         else -> Icons.Default.Pending to MaterialTheme.colorScheme.onSurfaceVariant
     }
 
