@@ -3282,7 +3282,24 @@ fun RoleSelectionGate(
         userRole
     }
 
-    var activeSelectionTab by remember { mutableStateOf(0) } // 0: Customer, 1: Restaurant, 2: Rider, 3: Admin
+    // Lands on the tab matching the account's actual signed-up role instead
+    // of always defaulting to Customer. Previously every account — including
+    // ones that signed up as Restaurant or Driver — opened on the Customer
+    // tab and had to notice and manually switch tabs to find "Set Up Your
+    // Restaurant" / driver registration. Accounts that missed that step
+    // ended up with a role and a business name on their user profile but no
+    // actual restaurant (or driver) document ever created — invisible
+    // everywhere a real listing would show up.
+    var activeSelectionTab by remember(currentUserRole) {
+        mutableStateOf(
+            when (currentUserRole) {
+                UserRole.RESTAURANT -> 1
+                UserRole.DRIVER -> 2
+                UserRole.ADMIN -> 3
+                UserRole.CUSTOMER -> 0
+            }
+        )
+    } // 0: Customer, 1: Restaurant, 2: Rider, 3: Admin
     // Admin tab is only ever shown to accounts whose Firestore `role` is
     // actually "admin" — it used to be revealed by tapping the logo 5
     // times, with access granted via a hardcoded passcode (2026/1980/9999/
