@@ -3476,6 +3476,12 @@ fun RoleSelectionGate(
                             var setupFee by remember { mutableStateOf("2.00") }
                             var setupTime by remember { mutableStateOf("20-30 min") }
                             var setupError by remember { mutableStateOf("") }
+                            // Creating a restaurant round-trips through Firestore before
+                            // myRestaurant (above) picks it up and this screen switches
+                            // away — without this guard, a second tap on "Create My
+                            // Restaurant" during that window fires addRestaurant() again
+                            // and creates a duplicate restaurant document.
+                            var isSubmitting by remember { mutableStateOf(false) }
 
                             Text(
                                 text = "Set Up Your Restaurant",
@@ -3562,11 +3568,15 @@ fun RoleSelectionGate(
 
                                 Button(
                                     onClick = {
-                                        if (setupName.isBlank() || setupLoc.isBlank()) {
+                                        if (isSubmitting) {
+                                            // Already submitted — ignore extra taps instead of
+                                            // creating another duplicate restaurant document.
+                                        } else if (setupName.isBlank() || setupLoc.isBlank()) {
                                             setupError = "Please fill in your restaurant name and location."
                                         } else if (currentUid.isNullOrBlank()) {
                                             setupError = "You need to be signed in to set up a restaurant."
                                         } else {
+                                            isSubmitting = true
                                             viewModel.addRestaurant(
                                                 com.example.model.Restaurant(
                                                     id = "res_" + System.currentTimeMillis(),
@@ -3590,10 +3600,15 @@ fun RoleSelectionGate(
                                             )
                                         }
                                     },
+                                    enabled = !isSubmitting,
                                     modifier = Modifier.fillMaxWidth().testTag("restaurant_setup_submit"),
                                     shape = RoundedCornerShape(12.dp)
                                 ) {
-                                    Text("Create My Restaurant")
+                                    if (isSubmitting) {
+                                        CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp, color = Color.White)
+                                    } else {
+                                        Text("Create My Restaurant")
+                                    }
                                 }
                             }
                         }
