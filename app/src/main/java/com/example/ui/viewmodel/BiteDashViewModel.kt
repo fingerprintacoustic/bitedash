@@ -46,6 +46,14 @@ sealed interface PaymentStep {
 
 sealed interface UserProfile {
     object Idle : UserProfile
+    // Distinct from Idle so RoleSelectionGate knows this arrival was an
+    // explicit "Switch Role" tap from inside a dashboard, not a fresh
+    // sign-in. Without that distinction, an already-approved restaurant
+    // owner or driver landing back on their own role's tab gets
+    // auto-redirected straight back into the dashboard they just tried to
+    // leave (the "already registered" LaunchedEffect fires unconditionally),
+    // making Switch Role look like it does nothing.
+    object SwitchingRole : UserProfile
     object Customer : UserProfile
     data class RestaurantOwner(
         val restaurantId: String, 
@@ -64,6 +72,7 @@ sealed interface UserProfile {
     
     fun getAuthUid(): String? = when (this) {
         is Idle -> null
+        is SwitchingRole -> null
         is Customer -> null
         is RestaurantOwner -> firebaseUid.takeIf { it.isNotEmpty() }
         is Driver -> firebaseUid.takeIf { it.isNotEmpty() }

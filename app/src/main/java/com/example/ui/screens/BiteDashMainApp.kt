@@ -85,7 +85,9 @@ fun BiteDashMainApp(
     val isAuthenticated = authViewModel?.isAuthenticated() == true
 
     // If not authenticated and auth is available, show auth gate
-    if (authViewModel != null && !isAuthenticated && currentProfile is UserProfile.Idle) {
+    if (authViewModel != null && !isAuthenticated &&
+        (currentProfile is UserProfile.Idle || currentProfile is UserProfile.SwitchingRole)
+    ) {
         AuthenticationGate(
             authViewModel = authViewModel,
             onAuthenticated = { /* Auth handled via state */ }
@@ -96,6 +98,14 @@ fun BiteDashMainApp(
     when (val profile = currentProfile) {
         is UserProfile.Idle -> {
             RoleSelectionGate(viewModel = viewModel, authViewModel = authViewModel, userRole = userRole)
+        }
+        is UserProfile.SwitchingRole -> {
+            RoleSelectionGate(
+                viewModel = viewModel,
+                authViewModel = authViewModel,
+                userRole = userRole,
+                cameFromSwitchRole = true
+            )
         }
         is UserProfile.RestaurantOwner -> {
             RestaurantOwnerDashboard(owner = profile, viewModel = viewModel)
@@ -3407,7 +3417,13 @@ fun EditMenuDialog(
 fun RoleSelectionGate(
     viewModel: BiteDashViewModel,
     authViewModel: AuthViewModel? = null,
-    userRole: UserRole = UserRole.CUSTOMER
+    userRole: UserRole = UserRole.CUSTOMER,
+    // True when this screen was reached via an explicit "Switch Role" tap
+    // from inside a dashboard, rather than a fresh sign-in. Suppresses the
+    // Restaurant/Rider tabs' auto-redirect-into-dashboard behavior below —
+    // otherwise an already-approved owner/driver gets bounced straight
+    // back into the exact dashboard they just tried to leave.
+    cameFromSwitchRole: Boolean = false
 ) {
     val restaurants by viewModel.restaurantsState.collectAsStateWithLifecycle()
     val isManualMode by viewModel.isManualMode.collectAsStateWithLifecycle()
@@ -3627,12 +3643,40 @@ fun RoleSelectionGate(
                                 textAlign = TextAlign.Center
                             )
                         }
-                        myRestaurant != null -> {
+                        myRestaurant != null && !cameFromSwitchRole -> {
                             // Already linked to a restaurant — jump straight into their dashboard.
+                            // Skipped when arriving via explicit "Switch Role" (see below) —
+                            // otherwise tapping Switch Role from this exact dashboard just
+                            // bounces straight back into it.
                             LaunchedEffect(myRestaurant.id) {
                                 viewModel.setProfile(UserProfile.RestaurantOwner(myRestaurant.id, myRestaurant.name, currentUid ?: ""))
                             }
                             CircularProgressIndicator()
+                        }
+                        myRestaurant != null -> {
+                            // Reached by explicitly switching away from this dashboard —
+                            // show their info instead of auto-redirecting back into it.
+                            Text(
+                                text = "Restaurant Portal",
+                                fontWeight = FontWeight.Bold,
+                                style = MaterialTheme.typography.titleMedium,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                            Text(
+                                text = "You're registered as the owner of \"${myRestaurant.name}\".",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = Color.Gray,
+                                textAlign = TextAlign.Center
+                            )
+                            Button(
+                                onClick = {
+                                    viewModel.setProfile(UserProfile.RestaurantOwner(myRestaurant.id, myRestaurant.name, currentUid ?: ""))
+                                },
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(12.dp)
+                            ) {
+                                Text("Go to My Restaurant Dashboard")
+                            }
                         }
                         else -> {
                             // First time here as a restaurant-role account — set up their restaurant.
@@ -3816,11 +3860,39 @@ fun RoleSelectionGate(
                         !myDriverChecked -> {
                             CircularProgressIndicator()
                         }
-                        myDriver != null && myDriver!!.isApproved -> {
+                        myDriver != null && myDriver!!.isApproved && !cameFromSwitchRole -> {
+                            // Skipped when arriving via explicit "Switch Role" (see below) —
+                            // otherwise tapping Switch Role from this exact dashboard just
+                            // bounces straight back into it.
                             LaunchedEffect(myDriver!!.id) {
                                 viewModel.setProfile(UserProfile.Driver(myDriver!!.id, myDriver!!.name, currentUid ?: ""))
                             }
                             CircularProgressIndicator()
+                        }
+                        myDriver != null && myDriver!!.isApproved -> {
+                            // Reached by explicitly switching away from this dashboard —
+                            // show their info instead of auto-redirecting back into it.
+                            Text(
+                                text = "Rider Portal",
+                                fontWeight = FontWeight.Bold,
+                                style = MaterialTheme.typography.titleMedium,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                            Text(
+                                text = "You're registered as a rider (${myDriver!!.name}).",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = Color.Gray,
+                                textAlign = TextAlign.Center
+                            )
+                            Button(
+                                onClick = {
+                                    viewModel.setProfile(UserProfile.Driver(myDriver!!.id, myDriver!!.name, currentUid ?: ""))
+                                },
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(12.dp)
+                            ) {
+                                Text("Go to My Rider Dashboard")
+                            }
                         }
                         myDriver != null && !myDriver!!.isApproved -> {
                             // Registered, but not yet approved — mirrors the
@@ -4081,7 +4153,7 @@ fun RestaurantOwnerDashboard(
                             Text("Switch Kitchen (${otherOwnedRestaurants.size})", fontSize = 10.sp)
                         }
                     }
-                    TextButton(onClick = { viewModel.setProfile(UserProfile.Idle) }) {
+                    TextButton(onClick = { viewModel.setProfile(UserProfile.SwitchingRole) }) {
                         Icon(Icons.Default.ExitToApp, contentDescription = "Switch profile")
                         Spacer(modifier = Modifier.width(4.dp))
                         Text("Switch Role")
@@ -4488,7 +4560,7 @@ fun DriverDashboard(
                     }
                 },
                 actions = {
-                    TextButton(onClick = { viewModel.setProfile(UserProfile.Idle) }) {
+                    TextButton(onClick = { viewModel.setProfile(UserProfile.SwitchingRole) }) {
                         Icon(Icons.Default.ExitToApp, contentDescription = "Switch profile")
                         Spacer(modifier = Modifier.width(4.dp))
                         Text("Switch Role")
