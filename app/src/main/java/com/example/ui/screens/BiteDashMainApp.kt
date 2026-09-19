@@ -52,6 +52,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.data.entity.OrderEntity
 import com.example.model.CartItem
 import com.example.model.MenuItem
+import com.example.model.NEW_MENU_ITEM_ID_PREFIX
 import com.example.model.Restaurant
 import com.example.ui.theme.*
 import com.example.ui.viewmodel.BiteDashViewModel
@@ -2822,7 +2823,7 @@ fun AdminPortalOverlay(
                                             val pr = itemPrice.toDoubleOrNull() ?: 1.00
                                             addedMenuItems.add(
                                                 MenuItem(
-                                                    id = "item_" + System.currentTimeMillis().toString(),
+                                                    id = NEW_MENU_ITEM_ID_PREFIX + System.currentTimeMillis().toString(),
                                                     name = itemName,
                                                     description = if (itemDesc.isBlank()) "Crispy fresh gourmet hot food" else itemDesc,
                                                     price = pr,
@@ -3097,6 +3098,9 @@ fun EditMenuDialog(
     // previously sold-out item would never appear here to be toggled
     // back on.
     val localItems = remember { mutableStateListOf<MenuItem>() }
+    // Ids of already-saved items the owner deleted in this editor session.
+    // Only these are deleted on save — never "whatever isn't in the list".
+    val removedItemIds = remember { mutableStateListOf<String>() }
     var isLoadingMenu by remember { mutableStateOf(true) }
     LaunchedEffect(restaurant.id) {
         isLoadingMenu = true
@@ -3228,7 +3232,7 @@ fun EditMenuDialog(
                                             val pr = newPrice.toDoubleOrNull() ?: 1.00
                                             localItems.add(
                                                 MenuItem(
-                                                    id = "item_" + System.currentTimeMillis().toString(),
+                                                    id = NEW_MENU_ITEM_ID_PREFIX + System.currentTimeMillis().toString(),
                                                     name = newName,
                                                     description = if (newDesc.isBlank()) "Flame grilled delicious meal" else newDesc,
                                                     price = pr,
@@ -3298,7 +3302,12 @@ fun EditMenuDialog(
                                     ) {
                                         Text("Item #${idx + 1}", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = MaterialTheme.colorScheme.primary)
                                         IconButton(
-                                            onClick = { localItems.removeAt(idx) },
+                                            onClick = {
+                                                // Only items that already exist in Firestore need a
+                                                // delete on save; one added in this session was never written.
+                                                if (!item.id.startsWith(NEW_MENU_ITEM_ID_PREFIX)) removedItemIds.add(item.id)
+                                                localItems.removeAt(idx)
+                                            },
                                             modifier = Modifier.size(28.dp).testTag("delete_item_idx_$idx")
                                         ) {
                                             Icon(imageVector = Icons.Default.Delete, contentDescription = "Delete", tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(18.dp))
@@ -3397,7 +3406,7 @@ fun EditMenuDialog(
                     }
                     Button(
                         onClick = {
-                            viewModel.updateRestaurantMenu(restaurant.id, localItems.toList())
+                            viewModel.updateRestaurantMenu(restaurant.id, localItems.toList(), removedItemIds.toList())
                             onDismiss()
                         },
                         enabled = !isLoadingMenu,

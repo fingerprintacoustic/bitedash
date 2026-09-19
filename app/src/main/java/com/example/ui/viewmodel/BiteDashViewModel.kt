@@ -21,6 +21,7 @@ import com.example.data.firebase.toMenuItem
 import com.example.data.firebase.toRoomEntity
 import com.example.model.CartItem
 import com.example.model.MenuItem
+import com.example.model.NEW_MENU_ITEM_ID_PREFIX
 import com.example.model.Restaurant
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -459,34 +460,40 @@ viewModelScope.launch {
         }
     }
 
-    fun updateRestaurantMenu(restaurantId: String, updatedMenuItems: List<MenuItem>) {
+    // Saves the "Manage Menu" editor. Each item is written to the document
+    // with its own id — updated in place if it exists, created if it
+    // doesn't — and only the items the owner explicitly removed
+    // (removedItemIds) are deleted. This deliberately never reads the current
+    // documents to work out what changed: that list query can be denied or
+    // stale, and acting on an incomplete read either duplicates or deletes
+    // the wrong items. "Sold out" (isAvailable == false) is just a field on
+    // the item; it must not double as "deleted".
+    fun updateRestaurantMenu(
+        restaurantId: String,
+        updatedMenuItems: List<MenuItem>,
+        removedItemIds: List<String> = emptyList()
+    ) {
         viewModelScope.launch {
             val existing = restaurantsState.value.find { it.id == restaurantId }
             if (existing != null) {
-                val updated = existing.copy(menuItems = updatedMenuItems)
+                // Items the editor just added carry a temporary id; give them
+                // their real document id now, so the optimistic copy below
+                // (which the editor can fall back to) and the Firestore
+                // write agree on it and a later save can't create them twice.
+                val itemsWithIds = updatedMenuItems.map { item ->
+                    val isNew = item.id.startsWith(NEW_MENU_ITEM_ID_PREFIX)
+                    (if (isNew) item.copy(id = firestoreService.newMenuItemId()) else item) to isNew
+                }
+
                 // Optimistic local update so the editing admin sees the change
                 // instantly; the Firestore listener will reconcile shortly after.
                 if (_selectedRestaurant.value?.id == restaurantId) {
-                    _selectedRestaurant.value = updated
+                    _selectedRestaurant.value = existing.copy(menuItems = itemsWithIds.map { it.first })
                 }
 
-                // Replace the menu in Firestore: retire the old items, add the new ones.
-                // Uses getAllMenuItemsFlow (not getMenuItemsFlow, which only
-                // returns isAvailable == true items) so a previously
-                // sold-out item actually gets retired here too — otherwise
-                // it's never in this list to retire, never in
-                // updatedMenuItems to recreate, and just piles up as an
-                // orphaned document on every save.
-                val currentFirestoreItems = try {
-                    firestoreService.getAllMenuItemsFlow(restaurantId).first()
-                } catch (e: Exception) {
-                    emptyList()
-                }
-                currentFirestoreItems.forEach { item ->
-                    firestoreService.updateMenuItemField(item.id, "isAvailable", false)
-                }
-                updatedMenuItems.forEach { item ->
-                    firestoreService.createMenuItem(item.toFirestoreMenuItem(restaurantId))
+                removedItemIds.forEach { firestoreService.deleteMenuItem(it, restaurantId) }
+                itemsWithIds.forEach { (item, isNew) ->
+                    firestoreService.saveMenuItem(restaurantId, item.toFirestoreMenuItem(restaurantId), isNew)
                 }
             }
         }

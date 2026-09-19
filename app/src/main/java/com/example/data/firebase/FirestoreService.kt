@@ -4,6 +4,7 @@ import com.google.firebase.Timestamp
 import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.Query
+import com.google.firebase.firestore.SetOptions
 import com.google.firebase.firestore.snapshots
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
@@ -325,6 +326,75 @@ class FirestoreService {
                 .document(menuItemId)
                 .update(field, value, "updatedAt", Timestamp.now())
                 .await()
+            true
+        } catch (e: Exception) {
+            false
+        }
+    }
+
+    // A fresh document id for a menu item that doesn't exist yet, so the
+    // caller knows the item's real id before (and regardless of whether) the
+    // write succeeds.
+    fun newMenuItemId(): String = db.collection(COLLECTION_MENU_ITEMS).document().id
+
+    // Writes one menu item to the document with its own id: updates it in
+    // place if it exists, creates it if it doesn't, and never creates a
+    // second document for the same item. Only the fields the owner edits in
+    // "Manage Menu" are written, merged, so imageUrl, preparationTime and
+    // createdAt on an existing item are left alone.
+    suspend fun saveMenuItem(restaurantId: String, menuItem: FirestoreMenuItem, isNew: Boolean): Boolean {
+        return try {
+            val fields = mutableMapOf<String, Any>(
+                "restaurantId" to restaurantId,
+                "name" to menuItem.name,
+                "description" to menuItem.description,
+                "price" to menuItem.price,
+                "category" to menuItem.category,
+                "isAvailable" to menuItem.isAvailable,
+                "updatedAt" to Timestamp.now()
+            )
+            if (isNew) {
+                fields["imageUrl"] = menuItem.imageUrl
+                fields["preparationTime"] = menuItem.preparationTime
+                fields["createdAt"] = Timestamp.now()
+            }
+            db.collection(COLLECTION_MENU_ITEMS)
+                .document(menuItem.id)
+                .set(fields, SetOptions.merge())
+                .await()
+            if (isNew) {
+                val restaurant = getRestaurant(restaurantId)
+                if (restaurant != null && menuItem.id !in restaurant.menuItemIds) {
+                    updateRestaurantField(
+                        restaurantId,
+                        "menuItemIds",
+                        restaurant.menuItemIds + menuItem.id
+                    )
+                }
+            }
+            true
+        } catch (e: Exception) {
+            false
+        }
+    }
+
+    // Permanently removes a menu item and drops its id from the restaurant's
+    // menuItemIds. Sold-out is a separate state (isAvailable == false) and
+    // must never be used to mean "deleted".
+    suspend fun deleteMenuItem(menuItemId: String, restaurantId: String): Boolean {
+        return try {
+            db.collection(COLLECTION_MENU_ITEMS)
+                .document(menuItemId)
+                .delete()
+                .await()
+            val restaurant = getRestaurant(restaurantId)
+            if (restaurant != null && menuItemId in restaurant.menuItemIds) {
+                updateRestaurantField(
+                    restaurantId,
+                    "menuItemIds",
+                    restaurant.menuItemIds - menuItemId
+                )
+            }
             true
         } catch (e: Exception) {
             false

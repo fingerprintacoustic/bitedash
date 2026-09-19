@@ -1,5 +1,11 @@
 package com.example.model
 
+// Prefix of the temporary id the "Manage Menu" editor gives an item the owner
+// has just added. Items loaded from Firestore carry their real document id
+// instead, so this prefix is how a save tells "not written yet" from "already
+// exists".
+const val NEW_MENU_ITEM_ID_PREFIX = "item_"
+
 data class MenuItem(
     val id: String,
     val name: String,
