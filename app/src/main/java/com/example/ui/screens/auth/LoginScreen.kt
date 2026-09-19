@@ -53,10 +53,16 @@ fun LoginScreen(
 
     var passwordVisible by remember { mutableStateOf(false) }
 
+    // The app draws edge-to-edge, so pad for the status bar, navigation bar
+    // and keyboard here — otherwise the bottom "Sign Up" row sits behind the
+    // system navigation buttons and can't be tapped reliably.
     Box(
         modifier = Modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
+            .statusBarsPadding()
+            .navigationBarsPadding()
+            .imePadding()
     ) {
         Column(
             modifier = Modifier
