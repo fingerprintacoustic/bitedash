@@ -3102,11 +3102,17 @@ fun EditMenuDialog(
     // Only these are deleted on save — never "whatever isn't in the list".
     val removedItemIds = remember { mutableStateListOf<String>() }
     var isLoadingMenu by remember { mutableStateOf(true) }
+    // True when the full menu (including sold-out items) couldn't be read
+    // and the list below is only the last-synced fallback. Without a notice
+    // the owner can't tell that sold-out items may simply be missing.
+    var menuLoadFailed by remember { mutableStateOf(false) }
     LaunchedEffect(restaurant.id) {
         isLoadingMenu = true
+        menuLoadFailed = false
         val items = try {
             FirestoreService().getAllMenuItemsFlow(restaurant.id).first().map { it.toMenuItem() }
         } catch (e: Exception) {
+            menuLoadFailed = true
             restaurant.menuItems
         }
         localItems.clear()
@@ -3261,6 +3267,25 @@ fun EditMenuDialog(
                             color = MaterialTheme.colorScheme.onSurface,
                             modifier = Modifier.padding(top = 8.dp)
                         )
+                    }
+
+                    if (menuLoadFailed && !isLoadingMenu) {
+                        item {
+                            Text(
+                                text = "⚠ Couldn't load your full menu. Sold-out items may be missing from this list " +
+                                    "— saving won't change or delete them. Close and reopen to try again.",
+                                fontSize = 12.sp,
+                                color = MaterialTheme.colorScheme.error,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .background(
+                                        MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.35f),
+                                        RoundedCornerShape(8.dp)
+                                    )
+                                    .padding(10.dp)
+                                    .testTag("menu_load_failed_warning")
+                            )
+                        }
                     }
 
                     if (isLoadingMenu) {
