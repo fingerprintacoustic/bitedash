@@ -3480,13 +3480,21 @@ fun RoleSelectionGate(
         modifier = Modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
+            .statusBarsPadding()
+            .navigationBarsPadding()
+            .imePadding()
             .padding(16.dp),
         contentAlignment = Alignment.Center
     ) {
+        // Scrollable: the "Set Up Your Restaurant" / rider registration forms
+        // are taller than the screen (and shorter still with the keyboard up),
+        // so without this the submit button was clipped off-screen and
+        // setup could never be finished.
         Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .widthIn(max = 450.dp)
+                .verticalScroll(rememberScrollState())
                 .background(MaterialTheme.colorScheme.surface, RoundedCornerShape(24.dp))
                 .border(2.dp, MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f), RoundedCornerShape(24.dp))
                 .padding(24.dp),
