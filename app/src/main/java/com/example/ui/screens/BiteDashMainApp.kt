@@ -233,7 +233,7 @@ fun CustomerMainScaffold(
                         }
                     }
                     IconButton(
-                        onClick = { viewModel.setProfile(UserProfile.Idle) },
+                        onClick = { viewModel.setProfile(UserProfile.SwitchingRole) },
                         modifier = Modifier.testTag("switch_role_from_customer")
                     ) {
                         Icon(
