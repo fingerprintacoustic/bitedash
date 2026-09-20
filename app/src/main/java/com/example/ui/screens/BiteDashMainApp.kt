@@ -3580,32 +3580,41 @@ fun RoleSelectionGate(
             )
 
 
-            // Tabs for selector
-            ScrollableTabRow(
-                selectedTabIndex = if (activeSelectionTab == 3 && !isAdminTabVisible) 0 else activeSelectionTab,
-                containerColor = Color.Transparent,
-                edgePadding = 0.dp,
-                divider = {}
-            ) {
-                Tab(selected = activeSelectionTab == 0, onClick = { activeSelectionTab = 0 }) {
-                    Text("Customer", modifier = Modifier.padding(12.dp))
-                }
-                Tab(selected = activeSelectionTab == 1, onClick = { activeSelectionTab = 1 }) {
-                    Text("Restaurant", modifier = Modifier.padding(12.dp))
-                }
-                Tab(selected = activeSelectionTab == 2, onClick = { activeSelectionTab = 2 }) {
-                    Text("Rider", modifier = Modifier.padding(12.dp))
-                }
-                if (isAdminTabVisible) {
-                    Tab(selected = activeSelectionTab == 3, onClick = { activeSelectionTab = 3 }) {
-                        Text("Admin", modifier = Modifier.padding(12.dp))
+            // Tabs for selector. The Admin tab only exists for admin accounts, so
+            // the tab count changes (3 -> 4) right after sign-in, when the
+            // account's role finishes loading and the selected index jumps to
+            // the Admin tab at the same time. The tabs are rendered from — and
+            // the selected index clamped against — one list, and the row is keyed
+            // on the count so it's rebuilt from scratch when that changes.
+            // Otherwise ScrollableTabRow could measure the old 3 tabs while
+            // being told to select index 3 and crash the app on admin sign-in
+            // (IndexOutOfBoundsException: Index 3 out of bounds for length 3).
+            val selectionTabs = buildList {
+                add("Customer")
+                add("Restaurant")
+                add("Rider")
+                if (isAdminTabVisible) add("Admin")
+            }
+            // A stale index past the last tab (e.g. Admin after losing that
+            // role) falls back to Customer.
+            val currentSelectedTab = if (activeSelectionTab > selectionTabs.lastIndex) 0 else activeSelectionTab
+            key(selectionTabs.size) {
+                ScrollableTabRow(
+                    selectedTabIndex = currentSelectedTab,
+                    containerColor = Color.Transparent,
+                    edgePadding = 0.dp,
+                    divider = {}
+                ) {
+                    selectionTabs.forEachIndexed { index, label ->
+                        Tab(selected = currentSelectedTab == index, onClick = { activeSelectionTab = index }) {
+                            Text(label, modifier = Modifier.padding(12.dp))
+                        }
                     }
                 }
             }
 
             Spacer(modifier = Modifier.height(8.dp))
 
-            val currentSelectedTab = if (activeSelectionTab == 3 && !isAdminTabVisible) 0 else activeSelectionTab
             when (currentSelectedTab) {
                 0 -> {
                     // CUSTOMER ROLE
