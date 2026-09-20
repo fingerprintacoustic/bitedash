@@ -2082,10 +2082,14 @@ fun AdminPortalOverlay(
 
                 Spacer(modifier = Modifier.height(12.dp))
 
-                // Tab Row
-                TabRow(
+                // Tab Row. Seven tabs can't share a phone-width fixed row — each
+                // got ~1/7 of the width and labels like "Restaurants" wrapped
+                // one letter per line — so it scrolls horizontally and each tab
+                // sizes to its label instead.
+                ScrollableTabRow(
                     selectedTabIndex = activeSubTab,
                     containerColor = Color.Transparent,
+                    edgePadding = 0.dp,
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Tab(
