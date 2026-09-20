@@ -3548,7 +3548,14 @@ fun RoleSelectionGate(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.End
                 ) {
-                    TextButton(onClick = { authViewModel?.signOut() }) {
+                    TextButton(onClick = {
+                        authViewModel?.signOut()
+                        // Also reset the role state, as the Profile screen's sign-out does.
+                        // Arriving here via "Switch Role" leaves it at SwitchingRole, which
+                        // would otherwise carry over to the next account that signs in and
+                        // suppress its auto-forward into its own dashboard.
+                        viewModel.setProfile(UserProfile.Idle)
+                    }) {
                         Icon(Icons.Default.ExitToApp, contentDescription = null, modifier = Modifier.size(16.dp))
                         Spacer(modifier = Modifier.width(4.dp))
                         Text("Sign Out", fontSize = 12.sp)
