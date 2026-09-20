@@ -2190,10 +2190,12 @@ fun AdminPortalOverlay(
                                                 ) {
                                                     Column(modifier = Modifier.weight(1f)) {
                                                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                                            Text(rest.name, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium)
+                                                            // weight(fill = false): the name shrinks/wraps to make room for the
+                                                            // badge instead of squeezing it into "Pendi/ng".
+                                                            Text(rest.name, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f, fill = false))
                                                             if (!rest.isApproved) {
                                                                 Badge(containerColor = Color(0xFFF59E0B), contentColor = Color.White) {
-                                                                    Text("Pending", modifier = Modifier.padding(horizontal = 6.dp, vertical = 1.dp), fontSize = 9.sp)
+                                                                    Text("Pending", modifier = Modifier.padding(horizontal = 6.dp, vertical = 1.dp), fontSize = 9.sp, maxLines = 1, softWrap = false)
                                                                 }
                                                             }
                                                         }
@@ -2343,10 +2345,12 @@ fun AdminPortalOverlay(
                                                 ) {
                                                     Column(modifier = Modifier.weight(1f)) {
                                                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                                            Text(d.name, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium)
+                                                            // weight(fill = false): the name shrinks/wraps to make room for the
+                                                            // badge instead of squeezing it into "Pendi/ng".
+                                                            Text(d.name, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f, fill = false))
                                                             if (!d.isApproved) {
                                                                 Badge(containerColor = Color(0xFFF59E0B), contentColor = Color.White) {
-                                                                    Text("Pending", modifier = Modifier.padding(horizontal = 6.dp, vertical = 1.dp), fontSize = 9.sp)
+                                                                    Text("Pending", modifier = Modifier.padding(horizontal = 6.dp, vertical = 1.dp), fontSize = 9.sp, maxLines = 1, softWrap = false)
                                                                 }
                                                             }
                                                         }
