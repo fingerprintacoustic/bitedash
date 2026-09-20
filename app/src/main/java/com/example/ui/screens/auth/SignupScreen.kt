@@ -65,10 +65,16 @@ fun SignupScreen(
     var passwordVisible by remember { mutableStateOf(false) }
     var showRoleSelector by remember { mutableStateOf(false) }
 
+    // The app draws edge-to-edge, so pad for the status bar, navigation bar
+    // and keyboard here — otherwise the form scrolls up under the status bar
+    // and the "Create Account" button starts out behind the navigation bar.
     Box(
         modifier = Modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
+            .statusBarsPadding()
+            .navigationBarsPadding()
+            .imePadding()
     ) {
         Column(
             modifier = Modifier
