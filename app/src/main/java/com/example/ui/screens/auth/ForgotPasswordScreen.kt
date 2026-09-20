@@ -3,8 +3,10 @@ package com.example.ui.screens.auth
 import androidx.compose.animation.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.CheckCircle
@@ -40,14 +42,21 @@ fun ForgotPasswordScreen(
     val errorMessage by authViewModel.errorMessage.collectAsStateWithLifecycle()
     val successMessage by authViewModel.successMessage.collectAsStateWithLifecycle()
 
+    // The app draws edge-to-edge, so pad for the status bar, navigation bar
+    // and keyboard, and scroll so the content stays reachable with the
+    // keyboard open.
     Box(
         modifier = Modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
+            .statusBarsPadding()
+            .navigationBarsPadding()
+            .imePadding()
     ) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
+                .verticalScroll(rememberScrollState())
                 .padding(24.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {

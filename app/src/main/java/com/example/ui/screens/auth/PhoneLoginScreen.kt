@@ -68,10 +68,16 @@ fun PhoneLoginScreen(
         authViewModel.updatePhone(selectedCountry.dialCode + nationalNumber)
     }
 
+    // The app draws edge-to-edge, so pad for the status bar, navigation bar
+    // and keyboard here — otherwise the form scrolls under the status bar and
+    // its bottom sits behind the navigation buttons.
     Box(
         modifier = Modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
+            .statusBarsPadding()
+            .navigationBarsPadding()
+            .imePadding()
     ) {
         Column(
             modifier = Modifier
