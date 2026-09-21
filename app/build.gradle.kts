@@ -15,8 +15,8 @@ android {
     applicationId = "com.aistudio.bitedash.znvtxp"
     minSdk = 24
     targetSdk = 36
-    versionCode = 24
-    versionName = "6.18"
+    versionCode = 26
+    versionName = "6.20"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
   }
