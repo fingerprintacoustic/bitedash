@@ -17,9 +17,25 @@ driver and restaurant approval, and the full Cash on Delivery lifecycle (place, 
 accepts/picks up/delivers, customer sees live status). Checkout now goes through `placeOrder`.
 Live rules were checked over REST as customer, driver, owner and signed-out user.
 
+## Online payments (Paynow): NOT WORKING YET, needs one action
+
+Every online channel (EcoCash, OneMoney, InnBucks, O'Mari, Telecash, ZIPIT, Bank Cards) goes through Paynow's hosted
+checkout: the server (`initiatePaynowPayment`) starts the transaction and the app opens Paynow's page. The channel
+and number typed in the app are not sent to Paynow; the customer picks how to pay on Paynow's page.
+
+- Fixed in the app: the four channels other than EcoCash/OneMoney/InnBucks used to fail with "Cash on Delivery does
+  not go through Paynow" before reaching Paynow. They now reach Paynow.
+- **Blocking:** Paynow rejects every request with "Invalid Hash". The Firebase secret `PAYNOW_INTEGRATION_KEY` is
+  malformed: it is 72 characters, the real 36-character key pasted twice (verified by the function's diagnostics;
+  the key was never printed). Re-set it with `firebase functions:secrets:set PAYNOW_INTEGRATION_KEY` (paste the key
+  once), then redeploy `initiatePaynowPayment`, `checkPaynowPaymentStatus` and `paynowResultWebhook` so they pick up
+  the new version.
+- Online orders are saved before payment. Restaurants now only see Cash on Delivery orders and orders Paynow has
+  confirmed as paid. Abandoned/failed payments are not cancelled: they stay in Firestore, hidden from restaurants.
+
 ## Not verified
 
-- A real Paynow payment (EcoCash / OneMoney / InnBucks / card) and its webhook.
+- A completed Paynow payment (EcoCash / OneMoney / InnBucks / card) and its webhook.
 - Phone/SMS (OTP) login.
 - A release-signed build (only debug builds were tested).
 - Simulation mode (non-manual checkout) does not sync real order status.
