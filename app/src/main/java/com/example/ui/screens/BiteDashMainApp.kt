@@ -1285,9 +1285,10 @@ fun CartScreen(viewModel: BiteDashViewModel) {
                 }
                 val merchantLabel = when (checkoutMethod) {
                     "USD Cash" -> "Cash On Delivery (COD) - Pay driver in physical USD cash"
-                    "ZIPIT", "Bank Cards" -> "Merchant gateway: Simbisa Pay / ZimSwitch Secure"
-                    "O'Mari" -> "O'Mari Gateway: Old Mutual Zimbabwe Pin Prompt"
-                    else -> "Recipient Merchant: BiteDash Mobile Services"
+                    // Every online channel is paid on Paynow's own secure page (the server
+                    // starts a Paynow hosted checkout), not through a separate gateway per
+                    // channel, so say that instead of naming gateways the app doesn't use.
+                    else -> "You'll finish this payment on Paynow's secure payment page"
                 }
 
                 OutlinedCard(
