@@ -1291,6 +1291,7 @@ fun CartScreen(viewModel: BiteDashViewModel) {
                     // Mobile money is approved on the customer's own phone, all inside BiteDash.
                     "EcoCash", "OneMoney" -> "You'll get a prompt on your phone to approve this payment"
                     "InnBucks" -> "You'll get a code to approve in the InnBucks app"
+                    in viewModel.unavailableCheckoutMethods -> "Not available yet"
                     else -> "You'll finish this payment on Paynow's secure payment page"
                 }
 
@@ -1342,8 +1343,19 @@ fun CartScreen(viewModel: BiteDashViewModel) {
                             )
                         )
 
+                        val methodUnavailable = checkoutMethod in viewModel.unavailableCheckoutMethods
+                        if (methodUnavailable) {
+                            Text(
+                                "$checkoutMethod payments aren't available yet. Please choose EcoCash, InnBucks or USD Cash to place your order.",
+                                color = MaterialTheme.colorScheme.error,
+                                style = MaterialTheme.typography.bodySmall,
+                                modifier = Modifier.testTag("method_unavailable_notice")
+                            )
+                        }
+
                         Button(
                             onClick = { viewModel.processCheckout() },
+                            enabled = !methodUnavailable,
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .height(48.dp)

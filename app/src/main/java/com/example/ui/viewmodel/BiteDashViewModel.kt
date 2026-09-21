@@ -255,6 +255,13 @@ class BiteDashViewModel(application: Application) : AndroidViewModel(application
     var restaurants: List<Restaurant> = emptyList()
     var drivers: List<DriverEntity> = emptyList()
 
+    // Channels that are shown but can't take a payment yet, because they aren't enabled on
+    // the Paynow account (OneMoney/Telecash exist only in ZWG, cards need business
+    // verification, and O'Mari/ZIPIT aren't enabled). Picking one explains this and blocks
+    // the pay button instead of failing at Paynow. To switch a channel on once Paynow
+    // enables it, just remove it from this set.
+    val unavailableCheckoutMethods = setOf("OneMoney", "Telecash", "O'Mari", "ZIPIT", "Bank Cards")
+
     val checkoutMethods = listOf("EcoCash", "InnBucks", "OneMoney", "O'Mari", "Telecash", "ZIPIT", "Bank Cards", "USD Cash")
 
     init {
@@ -807,6 +814,13 @@ viewModelScope.launch {
         val paymentPhone = _phoneInput.value
         val method = _checkoutMethod.value
         val isCash = method == "USD Cash"
+
+        if (method in unavailableCheckoutMethods) {
+            _paymentStep.value = PaymentStep.Error(
+                "$method payments aren't available yet. Please pay with EcoCash, InnBucks or cash on delivery."
+            )
+            return
+        }
 
         // Simple validation
         if (!isCash && paymentPhone.length < 9) {
