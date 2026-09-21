@@ -45,6 +45,8 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.compose.foundation.horizontalScroll
+import com.example.ui.screens.help.GuideRole
+import com.example.ui.screens.help.RoleGuideButton
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.filled.Visibility
@@ -210,6 +212,8 @@ fun CustomerMainScaffold(
                             }
                         }
                     }
+                    // An admin sees the admin guide from inside the hub, not this one on every sign-in.
+                    RoleGuideButton(GuideRole.CUSTOMER, autoShow = currentProfile !is UserProfile.Admin)
                     if (currentProfile is UserProfile.Admin) {
                         IconButton(
                             onClick = { isAdminPortalOpen = true },
@@ -2084,8 +2088,11 @@ fun AdminPortalOverlay(
                             )
                         }
                     }
-                    IconButton(onClick = onDismiss, modifier = Modifier.testTag("close_admin_hub")) {
-                        Icon(imageVector = Icons.Default.Close, contentDescription = "Close Hub")
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        RoleGuideButton(GuideRole.ADMIN)
+                        IconButton(onClick = onDismiss, modifier = Modifier.testTag("close_admin_hub")) {
+                            Icon(imageVector = Icons.Default.Close, contentDescription = "Close Hub")
+                        }
                     }
                 }
 
@@ -4210,9 +4217,18 @@ fun RestaurantOwnerDashboard(
             TopAppBar(
                 title = {
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text(owner.restaurantName, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
+                        // The name gives way (ellipsis) before the badge wraps: with the help icon
+                        // added there isn't room for both at full width on a phone.
+                        Text(
+                            owner.restaurantName,
+                            fontWeight = FontWeight.Bold,
+                            style = MaterialTheme.typography.titleMedium,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f, fill = false)
+                        )
                         Badge(containerColor = MaterialTheme.colorScheme.primaryContainer) {
-                            Text("Kitchen Hub", fontSize = 10.sp, color = MaterialTheme.colorScheme.onPrimaryContainer)
+                            Text("Kitchen Hub", fontSize = 10.sp, maxLines = 1, softWrap = false, color = MaterialTheme.colorScheme.onPrimaryContainer)
                         }
                     }
                 },
@@ -4228,6 +4244,7 @@ fun RestaurantOwnerDashboard(
                             Text("Switch Kitchen (${otherOwnedRestaurants.size})", fontSize = 10.sp)
                         }
                     }
+                    RoleGuideButton(GuideRole.RESTAURANT)
                     TextButton(onClick = { viewModel.setProfile(UserProfile.SwitchingRole) }) {
                         Icon(Icons.Default.ExitToApp, contentDescription = "Switch profile")
                         Spacer(modifier = Modifier.width(4.dp))
@@ -4628,13 +4645,21 @@ fun DriverDashboard(
             TopAppBar(
                 title = {
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text(driver.driverName, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
+                        Text(
+                            driver.driverName,
+                            fontWeight = FontWeight.Bold,
+                            style = MaterialTheme.typography.titleMedium,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f, fill = false)
+                        )
                         Badge(containerColor = MaterialTheme.colorScheme.secondaryContainer) {
-                            Text("Rider active", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSecondaryContainer)
+                            Text("Rider active", fontSize = 10.sp, maxLines = 1, softWrap = false, color = MaterialTheme.colorScheme.onSecondaryContainer)
                         }
                     }
                 },
                 actions = {
+                    RoleGuideButton(GuideRole.DRIVER)
                     TextButton(onClick = { viewModel.setProfile(UserProfile.SwitchingRole) }) {
                         Icon(Icons.Default.ExitToApp, contentDescription = "Switch profile")
                         Spacer(modifier = Modifier.width(4.dp))
