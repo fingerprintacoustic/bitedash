@@ -189,8 +189,23 @@ service cloud.firestore {
       // Admin can read all orders
       allow read: if isAdmin();
       
-      // Customers can create orders
-      allow create: if isAuthenticated() && request.resource.data.userId == request.auth.uid;
+      // Customers can create orders, but only as brand-new ones: not already
+      // accepted/completed, no driver attached, not marked paid or settled.
+      // The order's own fields drive the restaurant's and driver's screens and
+      // the admin's payout totals (completed + unsettled orders), so an order
+      // created already COMPLETED with a colluding driver's uid, or already
+      // "paid", would otherwise be indistinguishable from a real one. The
+      // payment confirmation and every later status change happen through the
+      // update rules below or the Paynow Cloud Function, never at creation.
+      // (This does not check the prices: those are still computed by the
+      // client. Pricing the order server-side needs a Cloud Function.)
+      allow create: if isAuthenticated() &&
+        request.resource.data.userId == request.auth.uid &&
+        request.resource.data.status in ['PENDING_ACCEPTANCE', 'PREPARING'] &&
+        request.resource.data.get('deliveryStatus', 'UNASSIGNED') == 'UNASSIGNED' &&
+        request.resource.data.get('driverId', null) == null &&
+        request.resource.data.get('isSettled', false) == false &&
+        request.resource.data.get('paymentStatus', 'PENDING') in ['PENDING', 'CASH_ON_DELIVERY'];
       
       // Restaurant owners can update order status
       allow update: if isAuthenticated() &&
