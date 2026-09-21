@@ -1093,13 +1093,17 @@ fun CartScreen(viewModel: BiteDashViewModel) {
                                         ButtonDefaults.outlinedButtonColors()
                                     },
                                     shape = RoundedCornerShape(20.dp),
+                                    // Default button padding (24dp each side) leaves too little room
+                                    // for "No Tip" in a quarter-width chip, so it wrapped and clipped.
+                                    contentPadding = PaddingValues(horizontal = 4.dp),
                                     modifier = Modifier.weight(1f)
                                         .height(48.dp) // Touch target minimum
                                 ) {
                                     Text(
                                         text = if (option == 0.0) "No Tip" else "$${String.format(Locale.US, "%.0f", option)}",
                                         fontWeight = FontWeight.Bold,
-                                        fontSize = 12.sp
+                                        fontSize = 12.sp,
+                                        maxLines = 1
                                     )
                                 }
                             }
