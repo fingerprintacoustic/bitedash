@@ -17,7 +17,23 @@ driver and restaurant approval, and the full Cash on Delivery lifecycle (place, 
 accepts/picks up/delivers, customer sees live status). Checkout now goes through `placeOrder`.
 Live rules were checked over REST as customer, driver, owner and signed-out user.
 
-## Online payments (Paynow): reach Paynow's page; a completed payment is still untested
+## Online payments (Paynow): EcoCash express checkout verified in TEST mode
+
+- 2026-09-21: the Paynow integration ("BiteDash Food Delivery") is in **test mode** ("The External Site is in
+  testing"), so real customers cannot pay online until Paynow sets it live. Cash on Delivery is unaffected.
+- EcoCash/OneMoney/InnBucks now use Paynow express checkout (approved on the customer's phone, inside the app).
+  Verified in test mode with Paynow's test number 0771111111: payment record `PAID` (mode express), order
+  `paymentStatus PAID` with a Paynow reference set.
+- Test mode only accepts the merchant login email as payer, supplied by the git-ignored `functions/.env`
+  (`PAYNOW_AUTH_EMAIL_OVERRIDE`). **Delete that file and redeploy `initiatePaynowPayment` when Paynow sets the
+  integration live**, otherwise every customer payment would use the merchant email.
+- Enabled on the Paynow account (USD only): EcoCash, Zimswitch, PayGo, InnBucks, Internet/Mobile Banking, POS2U.
+  Visa/Mastercard are inactive (need business verification). OneMoney and Telecash exist only as ZWG (unticked).
+  Do not tick ZWG methods: the app sends USD amounts.
+- To do: click "Request to be Set Live" in Paynow; then hide channels that can't work (OneMoney, Telecash, O'Mari,
+  ZIPIT, Bank Cards) until enabled; rebuild the AAB.
+
+### Earlier notes (hosted-page flow, still used for cards)
 
 Every online channel (EcoCash, OneMoney, InnBucks, O'Mari, Telecash, ZIPIT, Bank Cards) goes through Paynow's hosted
 checkout: the server (`initiatePaynowPayment`) starts the transaction and the app opens Paynow's page. The channel
