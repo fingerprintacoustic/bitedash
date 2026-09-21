@@ -231,12 +231,21 @@ private fun PaymentBadge(method: String, reference: String) {
             modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
+            val isCash = method == "CASH_ON_DELIVERY"
             Text(
-                text = method.ifEmpty { "PAID" },
+                text = if (isCash) "Cash on Delivery" else method.ifEmpty { "PAID" },
                 style = MaterialTheme.typography.labelMedium,
                 fontWeight = FontWeight.SemiBold,
                 color = MaterialTheme.colorScheme.onPrimaryContainer
             )
+            if (isCash) {
+                // Nothing has been paid yet — the driver collects cash on arrival.
+                Text(
+                    text = "Unpaid · collect on delivery",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
+                )
+            }
             if (reference.isNotEmpty()) {
                 Text(
                     text = reference.take(10) + "...",
