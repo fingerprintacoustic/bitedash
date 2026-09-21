@@ -102,15 +102,24 @@ service cloud.firestore {
         request.resource.data.ownerUserId == request.auth.uid &&
         request.resource.data.isApproved == false;
 
-      // Restaurant owners can update anything on their own restaurant.
-      // Staff (added by the owner via staffEmails) can update everything
-      // except who owns the restaurant or who else has staff access —
-      // only the owner manages that.
+      // Restaurant owners can update anything on their own restaurant except
+      // isApproved. Staff (added by the owner via staffEmails) can update
+      // everything except who owns the restaurant, who else has staff access
+      // (only the owner manages that) and isApproved.
+      //
+      // isApproved is the admin review gate: the create rule above forces it to
+      // false, and only an admin (rule below) may flip it. Without excluding it
+      // here an owner could simply set isApproved: true on their own pending
+      // restaurant and skip review entirely — the same hole the driver rules
+      // close with their hasOnly() field whitelist.
       allow update: if isAuthenticated() && (
-        resource.data.ownerUserId == request.auth.uid ||
+        (
+          resource.data.ownerUserId == request.auth.uid &&
+          !request.resource.data.diff(resource.data).affectedKeys().hasAny(['isApproved'])
+        ) ||
         (
           isRestaurantOwnerOrStaff(restaurantId) &&
-          !request.resource.data.diff(resource.data).affectedKeys().hasAny(['ownerUserId', 'staffEmails'])
+          !request.resource.data.diff(resource.data).affectedKeys().hasAny(['ownerUserId', 'staffEmails', 'isApproved'])
         )
       );
       
