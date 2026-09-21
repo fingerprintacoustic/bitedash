@@ -33,6 +33,11 @@ data class PaymentTransaction(
     val pollUrl: String = "",
     /** Paynow-hosted checkout page the customer must open to complete payment. Not persisted. */
     val browserUrl: String = "",
+    /** Mobile money (express checkout) only, not persisted: how the customer approves the payment. */
+    val instructions: String = "",
+    /** InnBucks only, not persisted: the code the customer approves in the InnBucks app. */
+    val authorizationCode: String = "",
+    val authorizationExpires: String = "",
     val paynowReference: String = "",
     val mobileMoneyNumber: String = "",
     val errorMessage: String = "",

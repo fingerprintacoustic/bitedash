@@ -42,7 +42,17 @@ import kotlinx.coroutines.tasks.await
 sealed interface PaymentStep {
     object Idle : PaymentStep
     object SendingPush : PaymentStep
-    object WaitingForHandsetPin : PaymentStep
+    /**
+     * Mobile money: the customer approves the payment on their own phone (Paynow express
+     * checkout), so they stay in the app. [instructions] is Paynow's text for how to approve;
+     * for InnBucks, [authorizationCode] is the code to approve in the InnBucks app
+     * (valid until [authorizationExpires]).
+     */
+    data class WaitingForHandsetPin(
+        val instructions: String = "",
+        val authorizationCode: String = "",
+        val authorizationExpires: String = ""
+    ) : PaymentStep
     object ProcessingConfirmation : PaymentStep
     /** Paynow hosted checkout is ready — customer needs to open [url] to pay. */
     data class RedirectToPaynow(val url: String) : PaymentStep
@@ -689,9 +699,11 @@ viewModelScope.launch {
         when (method) {
             "EcoCash" -> if (!_phoneInput.value.startsWith("077") && !_phoneInput.value.startsWith("078")) _phoneInput.value = "077"
             "InnBucks" -> if (!_phoneInput.value.startsWith("07")) _phoneInput.value = "07"
-            "OneMoney" -> if (!_phoneInput.value.startsWith("073")) _phoneInput.value = "073"
+            // NetOne (OneMoney) numbers start 071 and Telecel (Telecash) 073; these two
+            // prefixes were swapped.
+            "OneMoney" -> if (!_phoneInput.value.startsWith("071")) _phoneInput.value = "071"
             "O'Mari" -> if (!_phoneInput.value.startsWith("077") && !_phoneInput.value.startsWith("078")) _phoneInput.value = "077"
-            "Telecash" -> if (!_phoneInput.value.startsWith("071")) _phoneInput.value = "071"
+            "Telecash" -> if (!_phoneInput.value.startsWith("073")) _phoneInput.value = "073"
             "ZIPIT" -> if (!_phoneInput.value.startsWith("07")) _phoneInput.value = "07"
             // A card can belong to someone outside Zimbabwe, so don't force a Zimbabwean
             // prefix on the contact number here: just clear one that was only a leftover
@@ -901,17 +913,31 @@ viewModelScope.launch {
                     is com.example.data.payment.PaymentResult.Success -> {
                         val transaction = paymentResult.transaction
 
-                        // Customer completes payment on Paynow's hosted page;
-                        // this state stays up (showing the open-page button +
-                        // a waiting indicator) for the whole poll below, so
+                        // Mobile money comes back with no page to open: the customer approves
+                        // on their phone. Anything else (cards) opens Paynow's hosted page.
+                        // Either state stays up for the whole poll below, so approving /
                         // returning to the app after paying resolves it.
-                        _paymentStep.value = PaymentStep.RedirectToPaynow(transaction.browserUrl)
+                        _paymentStep.value = if (transaction.browserUrl.isBlank()) {
+                            PaymentStep.WaitingForHandsetPin(
+                                instructions = transaction.instructions,
+                                authorizationCode = transaction.authorizationCode,
+                                authorizationExpires = transaction.authorizationExpires
+                            )
+                        } else {
+                            PaymentStep.RedirectToPaynow(transaction.browserUrl)
+                        }
 
                         val finalStatus = pollPaynowUntilResolved(transaction.transactionId)
                         when (finalStatus) {
                             com.example.data.payment.PaymentStatus.PAID -> ref = transaction.transactionId
                             com.example.data.payment.PaymentStatus.CANCELLED -> {
                                 _paymentStep.value = PaymentStep.Error("Payment was cancelled.")
+                                return@launch
+                            }
+                            com.example.data.payment.PaymentStatus.FAILED -> {
+                                _paymentStep.value = PaymentStep.Error(
+                                    "The payment didn't go through. It may have been declined or your balance was too low. Please try again."
+                                )
                                 return@launch
                             }
                             else -> {

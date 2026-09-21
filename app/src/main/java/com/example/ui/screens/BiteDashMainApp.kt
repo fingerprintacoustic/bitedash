@@ -1279,8 +1279,8 @@ fun CartScreen(viewModel: BiteDashViewModel) {
                     else -> "Phone Number"
                 }
                 val textPlaceholder = when (checkoutMethod) {
-                    "OneMoney" -> "e.g. 0731234567"
-                    "Telecash" -> "e.g. 0711234567"
+                    "OneMoney" -> "e.g. 0711234567"
+                    "Telecash" -> "e.g. 0731234567"
                     else -> "e.g. 0771234567"
                 }
                 val merchantLabel = when (checkoutMethod) {
@@ -1288,6 +1288,9 @@ fun CartScreen(viewModel: BiteDashViewModel) {
                     // Every online channel is paid on Paynow's own secure page (the server
                     // starts a Paynow hosted checkout), not through a separate gateway per
                     // channel, so say that instead of naming gateways the app doesn't use.
+                    // Mobile money is approved on the customer's own phone, all inside BiteDash.
+                    "EcoCash", "OneMoney" -> "You'll get a prompt on your phone to approve this payment"
+                    "InnBucks" -> "You'll get a code to approve in the InnBucks app"
                     else -> "You'll finish this payment on Paynow's secure payment page"
                 }
 
@@ -1389,8 +1392,8 @@ fun CartScreen(viewModel: BiteDashViewModel) {
                     when (val currentStep = paymentStep) {
                         is PaymentStep.SendingPush -> {
                             CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
-                            Text("Contacting Ecocash/Telecash/InnBucks servers...", textAlign = TextAlign.Center)
-                            Text("Establishing USSD Push tunnel to handset...", style = MaterialTheme.typography.bodySmall, color = Color.Gray)
+                            Text("Starting your payment...", textAlign = TextAlign.Center)
+                            Text("This only takes a moment.", style = MaterialTheme.typography.bodySmall, color = Color.Gray)
                         }
                         is PaymentStep.WaitingForHandsetPin -> {
                             // Infinite pulsing indicator representing prompt waiting
@@ -1412,8 +1415,51 @@ fun CartScreen(viewModel: BiteDashViewModel) {
                             ) {
                                 Icon(Icons.Default.Phone, contentDescription = "Handset prompt waiting", tint = MaterialTheme.colorScheme.primary)
                             }
-                            Text("Check your phone push prompt!", fontWeight = FontWeight.Bold)
-                            Text("Please enter your EcoCash / InnBucks passcode on your hand set to confirm payment total.", textAlign = TextAlign.Center, style = MaterialTheme.typography.bodyMedium)
+                            if (currentStep.authorizationCode.isNotBlank()) {
+                                // InnBucks: approve this code in the InnBucks app.
+                                val context = LocalContext.current
+                                Text("Approve in the InnBucks app", fontWeight = FontWeight.Bold)
+                                Text(
+                                    currentStep.authorizationCode,
+                                    style = MaterialTheme.typography.headlineMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                                if (currentStep.authorizationExpires.isNotBlank()) {
+                                    Text("Valid until ${currentStep.authorizationExpires}", style = MaterialTheme.typography.bodySmall, color = Color.Gray)
+                                }
+                                Text(
+                                    currentStep.instructions.ifBlank { "Open the InnBucks app and enter this code to pay." },
+                                    textAlign = TextAlign.Center,
+                                    style = MaterialTheme.typography.bodyMedium
+                                )
+                                Button(
+                                    onClick = {
+                                        try {
+                                            context.startActivity(
+                                                Intent(
+                                                    Intent.ACTION_VIEW,
+                                                    Uri.parse("com.innbucks.customer://purchase?paymentToken=${currentStep.authorizationCode}")
+                                                ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                            )
+                                        } catch (e: Exception) {
+                                            // InnBucks isn't installed: the code above can still be entered by hand.
+                                        }
+                                    }
+                                ) {
+                                    Text("Open InnBucks")
+                                }
+                            } else {
+                                // EcoCash / OneMoney: a prompt arrives on the customer's own phone.
+                                Text("Check your phone", fontWeight = FontWeight.Bold)
+                                Text(
+                                    currentStep.instructions.ifBlank { "Approve the payment prompt on your phone by entering your PIN." },
+                                    textAlign = TextAlign.Center,
+                                    style = MaterialTheme.typography.bodyMedium
+                                )
+                            }
+                            CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
+                            Text("Waiting for your approval...", style = MaterialTheme.typography.bodySmall, color = Color.Gray)
                         }
                         is PaymentStep.ProcessingConfirmation -> {
                             CircularProgressIndicator(color = MaterialTheme.colorScheme.tertiary)
@@ -1430,7 +1476,7 @@ fun CartScreen(viewModel: BiteDashViewModel) {
                             Icon(Icons.Default.Phone, contentDescription = "Open Paynow", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(56.dp))
                             Text("Complete your payment", fontWeight = FontWeight.Bold)
                             Text(
-                                "We opened Paynow's secure checkout in your browser. Choose EcoCash, OneMoney, InnBucks or card there, then come back here.",
+                                "We opened Paynow's secure checkout in your browser to complete your payment. Come back here when you're done.",
                                 textAlign = TextAlign.Center,
                                 style = MaterialTheme.typography.bodyMedium
                             )

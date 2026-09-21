@@ -67,10 +67,16 @@ class PaymentRepository(
 
         return withContext(Dispatchers.IO) {
             try {
-                val data = hashMapOf(
+                // Mobile money is approved on the customer's own phone (Paynow express
+                // checkout); everything else goes to Paynow's hosted page.
+                val express = request.method in setOf(
+                    PaymentMethod.ECO_CASH, PaymentMethod.ONE_MONEY, PaymentMethod.INNBUCKS
+                )
+                val data = hashMapOf<String, Any>(
                     "orderId" to request.orderId,
                     "method" to request.method.value,
-                    "mobileMoneyNumber" to request.mobileMoneyNumber
+                    "mobileMoneyNumber" to request.mobileMoneyNumber,
+                    "express" to express
                 )
                 val response = functions.getHttpsCallable("initiatePaynowPayment")
                     .call(data)
@@ -79,11 +85,15 @@ class PaymentRepository(
                     ?: return@withContext PaymentResult.Error("Unexpected response from server", "BAD_RESPONSE")
 
                 val transactionId = response["transactionId"] as? String
-                val browserUrl = response["browserUrl"] as? String
+                val browserUrl = (response["browserUrl"] as? String).orEmpty()
                 val pollUrl = response["pollUrl"] as? String
-                if (transactionId.isNullOrBlank() || browserUrl.isNullOrBlank() || pollUrl.isNullOrBlank()) {
+                // A hosted-page payment needs a URL to open; an express one has none.
+                if (transactionId.isNullOrBlank() || pollUrl.isNullOrBlank() || (!express && browserUrl.isBlank())) {
                     return@withContext PaymentResult.Error("Incomplete response from server", "BAD_RESPONSE")
                 }
+                val instructions = (response["instructions"] as? String).orEmpty()
+                val authorizationCode = (response["authorizationCode"] as? String).orEmpty()
+                val authorizationExpires = (response["authorizationExpires"] as? String).orEmpty()
 
                 PaymentResult.Success(
                     PaymentTransaction(
@@ -96,6 +106,9 @@ class PaymentRepository(
                         method = request.method.value,
                         pollUrl = pollUrl,
                         browserUrl = browserUrl,
+                        instructions = instructions,
+                        authorizationCode = authorizationCode,
+                        authorizationExpires = authorizationExpires,
                         mobileMoneyNumber = request.mobileMoneyNumber
                     )
                 )
