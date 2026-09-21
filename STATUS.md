@@ -17,7 +17,7 @@ driver and restaurant approval, and the full Cash on Delivery lifecycle (place, 
 accepts/picks up/delivers, customer sees live status). Checkout now goes through `placeOrder`.
 Live rules were checked over REST as customer, driver, owner and signed-out user.
 
-## Online payments (Paynow): NOT WORKING YET, needs one action
+## Online payments (Paynow): reach Paynow's page; a completed payment is still untested
 
 Every online channel (EcoCash, OneMoney, InnBucks, O'Mari, Telecash, ZIPIT, Bank Cards) goes through Paynow's hosted
 checkout: the server (`initiatePaynowPayment`) starts the transaction and the app opens Paynow's page. The channel
@@ -25,11 +25,17 @@ and number typed in the app are not sent to Paynow; the customer picks how to pa
 
 - Fixed in the app: the four channels other than EcoCash/OneMoney/InnBucks used to fail with "Cash on Delivery does
   not go through Paynow" before reaching Paynow. They now reach Paynow.
-- **Blocking:** Paynow rejects every request with "Invalid Hash". The Firebase secret `PAYNOW_INTEGRATION_KEY` is
-  malformed: it is 72 characters, the real 36-character key pasted twice (verified by the function's diagnostics;
-  the key was never printed). Re-set it with `firebase functions:secrets:set PAYNOW_INTEGRATION_KEY` (paste the key
-  once), then redeploy `initiatePaynowPayment`, `checkPaynowPaymentStatus` and `paynowResultWebhook` so they pick up
-  the new version.
+- Fixed (2026-09-21): Paynow was rejecting every request with "Invalid Hash" because the Firebase secret
+  `PAYNOW_INTEGRATION_KEY` was the real 36-character key pasted twice (72 characters). It was re-saved as a single
+  copy (secret version 2, never printed) and `initiatePaynowPayment`, `checkPaynowPaymentStatus` and
+  `paynowResultWebhook` were redeployed. Verified on a device: choosing Bank Cards at checkout now opens Paynow's
+  hosted payment page (paynow.co.zw). If the key is ever changed, redeploy those three functions afterwards; they pin
+  the secret version at deploy time.
+- Paynow's page shows Visa, Mastercard, ZimSwitch, EcoCash, Telecash and OneMoney and asks the payer for an email
+  (guest payment). InnBucks, ZIPIT and O'Mari are still listed in the app but were not seen on that page; check what
+  the merchant account has enabled before offering them.
+- **Still to do before launch:** complete one small real payment and confirm the order flips to paid (the
+  `paynowResultWebhook` / `checkPaynowPaymentStatus` path). Until then online payments are unproven end to end.
 - Online orders are saved before payment. Restaurants now only see Cash on Delivery orders and orders Paynow has
   confirmed as paid. Abandoned/failed payments are not cancelled: they stay in Firestore, hidden from restaurants.
 
