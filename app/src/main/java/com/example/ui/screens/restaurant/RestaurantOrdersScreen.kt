@@ -241,8 +241,20 @@ private fun OrdersList(
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         item {
+            // Only the statuses where the restaurant still has a button to press
+            // (accept/reject, start preparing, mark ready). This used to print
+            // orders.size, so a list full of completed or rejected orders still
+            // claimed everything was "awaiting action".
+            val awaitingAction = orders.count {
+                it.status in setOf(
+                    com.example.ui.viewmodel.restaurant.RestaurantOrderStatus.PENDING_ACCEPTANCE,
+                    com.example.ui.viewmodel.restaurant.RestaurantOrderStatus.PAID,
+                    com.example.ui.viewmodel.restaurant.RestaurantOrderStatus.ACCEPTED,
+                    com.example.ui.viewmodel.restaurant.RestaurantOrderStatus.PREPARING
+                )
+            }
             Text(
-                text = "${orders.size} order${if (orders.size != 1) "s" else ""} awaiting action",
+                text = "$awaitingAction awaiting action · ${orders.size} total",
                 style = MaterialTheme.typography.labelLarge,
                 color = MaterialTheme.colorScheme.primary,
                 fontWeight = FontWeight.SemiBold
