@@ -420,6 +420,30 @@ private fun OrderSummary(order: DriverDeliveryOrder) {
                 color = MaterialTheme.colorScheme.primary
             )
         }
+
+        // Cash on Delivery: the customer hasn't paid anything yet, so the driver has to
+        // know how much to collect at the door. The card used to show only the delivery
+        // fee, which read as the whole amount.
+        if (order.paymentMethod == "CASH_ON_DELIVERY") {
+            Spacer(modifier = Modifier.height(4.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text(
+                    text = "Collect cash on delivery",
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Text(
+                    text = "$${String.format("%.2f", order.totalCost)}",
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary
+                )
+            }
+        }
     }
 }
 
