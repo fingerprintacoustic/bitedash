@@ -63,6 +63,7 @@ fun SignupScreen(
     val successMessage by authViewModel.successMessage.collectAsStateWithLifecycle()
 
     var passwordVisible by remember { mutableStateOf(false) }
+    var confirmPasswordVisible by remember { mutableStateOf(false) }
     var showRoleSelector by remember { mutableStateOf(false) }
 
     // The app draws edge-to-edge, so pad for the status bar, navigation bar
@@ -435,7 +436,18 @@ fun SignupScreen(
                         contentDescription = null
                     )
                 },
-                visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                // Its own show/hide toggle: this field used to follow the Password
+                // field's toggle with no icon of its own, so there was no visible way
+                // to check what you'd typed when confirming.
+                trailingIcon = {
+                    IconButton(onClick = { confirmPasswordVisible = !confirmPasswordVisible }) {
+                        Icon(
+                            imageVector = if (confirmPasswordVisible) Icons.Filled.VisibilityOff else Icons.Filled.Visibility,
+                            contentDescription = if (confirmPasswordVisible) "Hide confirm password" else "Show confirm password"
+                        )
+                    }
+                },
+                visualTransformation = if (confirmPasswordVisible) VisualTransformation.None else PasswordVisualTransformation(),
                 modifier = Modifier.fillMaxWidth(),
                 keyboardOptions = KeyboardOptions(
                     keyboardType = KeyboardType.Password,
