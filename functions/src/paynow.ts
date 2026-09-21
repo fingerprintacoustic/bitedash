@@ -1,4 +1,5 @@
 import * as crypto from "crypto";
+import { logger } from "firebase-functions/v2";
 
 /**
  * Paynow Zimbabwe "Initiate a Transaction" (hosted checkout) endpoint.
@@ -137,6 +138,36 @@ export async function initiateTransaction(
   const responseText = await response.text();
   if (!response.ok) {
     return { ok: false, error: `Paynow HTTP ${response.status}` };
+  }
+
+  // Paynow's own error replies (unknown integration id, hash mismatch, invalid
+  // amount, ...) carry no hash. Look for one before insisting on a hash: checking
+  // the hash first reported every rejection as "failed hash verification" and threw
+  // away the real reason. The error text is safe to surface; it holds no secrets.
+  const parsed = parsePaynowMessage(responseText);
+  if (parsed.fields.get("status")?.toLowerCase() === "error") {
+    const paynowError = parsed.fields.get("error") || "the request was rejected";
+
+    // For a rejected hash Paynow says how the correct one starts ("Hash should start
+    // with: BB0564"). Use that to tell a whitespace/paste problem in the stored key
+    // from a wrong key, logging only yes/no answers and lengths, never the key itself.
+    const expectedPrefix = /should start with:\s*([0-9A-Fa-f]+)/.exec(paynowError)?.[1]?.toUpperCase();
+    if (expectedPrefix) {
+      const values = orderedFields.map(([, v]) => v);
+      logger.error("Paynow rejected the request hash", {
+        expectedPrefix,
+        keyLength: params.integrationKey.length,
+        keyHasEdgeWhitespace: params.integrationKey !== params.integrationKey.trim(),
+        idHasEdgeWhitespace: params.integrationId !== params.integrationId.trim(),
+        hashMatchesAsStored: generatePaynowHash(values, params.integrationKey).startsWith(expectedPrefix),
+        hashMatchesTrimmedKey: generatePaynowHash(values, params.integrationKey.trim()).startsWith(expectedPrefix),
+        // Paynow keys are normally 36-character GUIDs, so a much longer stored key
+        // (e.g. two pasted copies) is the usual reason for a rejected hash.
+        keyLooksMalformed: params.integrationKey.length !== 36,
+      });
+    }
+
+    return { ok: false, error: `Paynow error: ${paynowError}` };
   }
 
   const verified = validatePaynowHash(responseText, params.integrationKey);

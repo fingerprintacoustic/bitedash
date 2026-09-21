@@ -129,8 +129,8 @@ export const initiatePaynowPayment = onCall(
     const reference = `BD_${orderId.replace(/[^a-zA-Z0-9]/g, "").slice(0, 20)}_${Date.now()}`;
 
     const result = await initiateTransaction({
-      integrationId: PAYNOW_INTEGRATION_ID.value(),
-      integrationKey: PAYNOW_INTEGRATION_KEY.value(),
+      integrationId: PAYNOW_INTEGRATION_ID.value().trim(),
+      integrationKey: PAYNOW_INTEGRATION_KEY.value().trim(),
       reference,
       amount,
       additionalInfo: `BiteDash Order ${orderId}`,
@@ -196,7 +196,7 @@ export const checkPaynowPaymentStatus = onCall(
       return { status: payment.status };
     }
 
-    const poll = await pollTransactionStatus(payment.pollUrl || "", PAYNOW_INTEGRATION_KEY.value());
+    const poll = await pollTransactionStatus(payment.pollUrl || "", PAYNOW_INTEGRATION_KEY.value().trim());
     if (!poll.ok) {
       // Transient/network issue — report PENDING so the app keeps polling
       // instead of treating a hiccup as a hard failure.
@@ -227,7 +227,7 @@ export const paynowResultWebhook = onRequest(
     }
 
     const rawBody = (req.rawBody || Buffer.from("")).toString("utf8");
-    const verified = validatePaynowHash(rawBody, PAYNOW_INTEGRATION_KEY.value());
+    const verified = validatePaynowHash(rawBody, PAYNOW_INTEGRATION_KEY.value().trim());
     if (!verified) {
       logger.error("paynowResultWebhook: hash validation failed, rejecting message");
       res.status(400).send("Invalid hash");
