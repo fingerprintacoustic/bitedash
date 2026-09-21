@@ -479,6 +479,18 @@ class FirestoreService {
             .map { snapshot -> snapshot.toObjects(FirestoreOrder::class.java) }
     }
 
+    // Same as getOrdersFlowByUser but unordered: that one filters on userId and
+    // sorts on createdAt, which needs a composite index that firestore.indexes.json
+    // doesn't declare, so it fails with FAILED_PRECONDITION. An equality filter
+    // alone only needs automatic indexes, and callers that just want the current
+    // status of each order don't care about the order.
+    fun getUserOrderUpdatesFlow(userId: String): Flow<List<FirestoreOrder>> {
+        return db.collection(COLLECTION_ORDERS)
+            .whereEqualTo("userId", userId)
+            .snapshots()
+            .map { snapshot -> snapshot.toObjects(FirestoreOrder::class.java) }
+    }
+
     fun getRestaurantOrdersFlow(restaurantId: String): Flow<List<FirestoreOrder>> {
         // Sorting done client-side rather than via orderBy() — a filter on
         // one field plus orderBy on a different field can require a

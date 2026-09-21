@@ -91,6 +91,9 @@ class BiteDashViewModel(application: Application) : AndroidViewModel(application
     private val restaurantRepo: RestaurantRepository
     private val driverRepo: DriverRepository
     private val firestoreService = FirestoreService()
+    // The signed-in user's uid, emitting again on every sign-in / sign-out / account
+    // switch. The Firestore listeners below are restarted from it (collectLatest).
+    private val authUid = AuthenticationService().observeAuthState().map { it?.uid }.distinctUntilChanged()
     private val paymentRepository = com.example.data.repository.PaymentRepository.getInstance()
     private var trackingJob: Job? = null
 
@@ -279,8 +282,6 @@ class BiteDashViewModel(application: Application) : AndroidViewModel(application
 // starts under a non-admin account — and so it used to stay dead after
 // switching to an admin account in the same session, leaving the admin's lists
 // stale until the app was restarted.
-val authUid = AuthenticationService().observeAuthState().map { it?.uid }.distinctUntilChanged()
-
 viewModelScope.launch {
     authUid.collectLatest {
     try {
@@ -566,6 +567,57 @@ viewModelScope.launch {
                 }
             }
         }
+
+        // Mirror the real progress of the customer's orders from Firestore into the
+        // local cache. The restaurant and driver update the order in Firestore, but the
+        // customer's tracking screen reads the local Room copy, which nothing ever
+        // refreshed, so a customer stayed on "Waiting for Restaurant to Accept..." for
+        // an order that was already delivered. Only in manual (real) mode: the
+        // simulation mode fakes its own progress locally and its Firestore copy never
+        // moves past PREPARING.
+        viewModelScope.launch {
+            authUid.collectLatest { uid ->
+                if (uid == null) return@collectLatest
+                try {
+                    firestoreService.getUserOrderUpdatesFlow(uid).collect { remoteOrders ->
+                        if (!_isManualMode.value) return@collect
+                        remoteOrders.forEach { remote ->
+                            try {
+                                val local = repository.getOrderByFirestoreId(remote.id) ?: return@forEach
+                                // Forward-only, and a finished order stays finished, so a
+                                // stale snapshot can never drag an order backwards.
+                                val localRank = orderStatusRank(local.status)
+                                if (localRank in 0..4 && orderStatusRank(remote.status) > localRank) {
+                                    repository.updateOrderStatus(local.id, remote.status)
+                                }
+                            } catch (e: kotlinx.coroutines.CancellationException) {
+                                throw e
+                            } catch (e: Exception) {
+                                android.util.Log.e("BiteDashSync", "Failed to mirror order ${remote.id}: ${e.message}", e)
+                            }
+                        }
+                    }
+                } catch (e: kotlinx.coroutines.CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    android.util.Log.e("BiteDashSync", "Order status listener failed to start: ${e.message}", e)
+                }
+            }
+        }
+    }
+
+    // How far along an order is, for the forward-only mirroring above. Unknown or
+    // not-yet-meaningful statuses (e.g. PAID) rank -1 and are never applied; the two
+    // dead ends (rejected / cancelled) rank above everything else.
+    private fun orderStatusRank(status: String): Int = when (status) {
+        "PENDING_ACCEPTANCE" -> 0
+        "ACCEPTED" -> 1
+        "PREPARING" -> 2
+        "READY_FOR_PICKUP" -> 3
+        "OUT_FOR_DELIVERY" -> 4
+        "COMPLETED" -> 5
+        "REJECTED", "CANCELLED" -> 6
+        else -> -1
     }
 
     // Search and filters
@@ -1106,6 +1158,7 @@ viewModelScope.launch {
     fun updateTrackingStateManual(status: String) {
         _trackingStatusText.value = when (status) {
             "PENDING_ACCEPTANCE" -> "Waiting for Restaurant to Accept..."
+            "ACCEPTED" -> "Restaurant accepted your order! Starting on it shortly..."
             "PREPARING" -> "Kitchen preparing your freshly cooked meal..."
             "READY_FOR_PICKUP" -> "Meal is ready! Waiting for rider pickup..."
             "OUT_FOR_DELIVERY" -> "Rider in transit down Samora Machel Avenue..."
@@ -1114,6 +1167,7 @@ viewModelScope.launch {
         }
         _trackingProgress.value = when (status) {
             "PENDING_ACCEPTANCE" -> 0.0f
+            "ACCEPTED" -> 0.10f
             "PREPARING" -> 0.25f
             "READY_FOR_PICKUP" -> 0.50f
             "OUT_FOR_DELIVERY" -> 0.75f

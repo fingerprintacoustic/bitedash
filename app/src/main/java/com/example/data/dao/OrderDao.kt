@@ -13,7 +13,9 @@ interface OrderDao {
     @Query("SELECT * FROM orders ORDER BY timestamp DESC")
     fun getAllOrders(): Flow<List<OrderEntity>>
 
-    @Query("SELECT * FROM orders WHERE status != 'COMPLETED' ORDER BY timestamp DESC")
+    // REJECTED / CANCELLED are as finished as COMPLETED — otherwise an order the
+    // restaurant turned down would sit in "active tracking" forever.
+    @Query("SELECT * FROM orders WHERE status NOT IN ('COMPLETED', 'REJECTED', 'CANCELLED') ORDER BY timestamp DESC")
     fun getActiveOrders(): Flow<List<OrderEntity>>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
@@ -33,4 +35,7 @@ interface OrderDao {
 
     @Query("SELECT * FROM orders WHERE id = :orderId")
     suspend fun getOrderById(orderId: Int): OrderEntity?
+
+    @Query("SELECT * FROM orders WHERE firestoreOrderId = :firestoreOrderId LIMIT 1")
+    suspend fun getOrderByFirestoreId(firestoreOrderId: String): OrderEntity?
 }

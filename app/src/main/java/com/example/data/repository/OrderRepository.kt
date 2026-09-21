@@ -31,4 +31,8 @@ class OrderRepository(private val orderDao: OrderDao) {
     suspend fun getOrderById(orderId: Int): OrderEntity? {
         return orderDao.getOrderById(orderId)
     }
+
+    suspend fun getOrderByFirestoreId(firestoreOrderId: String): OrderEntity? {
+        return orderDao.getOrderByFirestoreId(firestoreOrderId)
+    }
 }
