@@ -693,6 +693,10 @@ viewModelScope.launch {
             "O'Mari" -> if (!_phoneInput.value.startsWith("077") && !_phoneInput.value.startsWith("078")) _phoneInput.value = "077"
             "Telecash" -> if (!_phoneInput.value.startsWith("071")) _phoneInput.value = "071"
             "ZIPIT" -> if (!_phoneInput.value.startsWith("07")) _phoneInput.value = "07"
+            // A card can belong to someone outside Zimbabwe, so don't force a Zimbabwean
+            // prefix on the contact number here: just clear one that was only a leftover
+            // prefill from another channel, and leave anything the customer typed alone.
+            "Bank Cards" -> if (_phoneInput.value in setOf("07", "071", "073", "077", "078")) _phoneInput.value = ""
             else -> if (!_phoneInput.value.startsWith("07")) _phoneInput.value = "07"
         }
     }
@@ -794,7 +798,10 @@ viewModelScope.launch {
 
         // Simple validation
         if (!isCash && paymentPhone.length < 9) {
-            _paymentStep.value = PaymentStep.Error("Please enter a valid Zimbabwean mobile money number.")
+            _paymentStep.value = PaymentStep.Error(
+                if (method == "Bank Cards") "Please enter a contact phone number (at least 9 digits)."
+                else "Please enter a valid Zimbabwean mobile money number."
+            )
             return
         }
         if (_deliveryAddressInput.value.isBlank()) {

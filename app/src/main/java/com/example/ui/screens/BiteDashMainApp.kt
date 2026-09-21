@@ -1182,7 +1182,7 @@ fun CartScreen(viewModel: BiteDashViewModel) {
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     Text(
-                        text = "Pay via Zimbabwean Payment Channels",
+                        text = "Choose how to pay",
                         fontWeight = FontWeight.Bold,
                         style = MaterialTheme.typography.titleSmall
                     )
@@ -1274,7 +1274,7 @@ fun CartScreen(viewModel: BiteDashViewModel) {
                     "O'Mari" -> "O'Mari Registered Number"
                     "Telecash" -> "Telecash Mobile Number"
                     "ZIPIT" -> "Contact Phone (ZIPIT Transfer)"
-                    "Bank Cards" -> "Contact Phone (Visa/Mastercard/ZimSwitch)"
+                    "Bank Cards" -> "Contact Phone Number (any country)"
                     "USD Cash" -> "Delivery/Contact Phone Number"
                     else -> "Phone Number"
                 }
