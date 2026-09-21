@@ -336,12 +336,16 @@ fun CustomerMainScaffold(
     }
 
     if (isProfileOpen && authViewModel != null) {
+        // Read the nav-bar inset here, from the activity window. Inside the Dialog below,
+        // Compose reports 0 for WindowInsets.navigationBars even though the dialog draws
+        // under the nav bar, which left Profile's Sign Out button unreachable behind it.
+        val navBarBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
         Dialog(
             onDismissRequest = { isProfileOpen = false },
             properties = DialogProperties(usePlatformDefaultWidth = false)
         ) {
             Surface(modifier = Modifier.fillMaxSize()) {
-                Column(modifier = Modifier.fillMaxSize()) {
+                Column(modifier = Modifier.fillMaxSize().padding(bottom = navBarBottom)) {
                     TopAppBar(
                         title = { Text("Profile") },
                         navigationIcon = {
