@@ -44,6 +44,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.filled.Visibility
@@ -5271,7 +5272,12 @@ private fun UserRoleManagementTab(authViewModel: AuthViewModel?) {
 
                     Spacer(modifier = Modifier.height(4.dp))
                     Text("New role:", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    // Scrollable: four chips don't fit a phone-width row, so the last one
+                    // ("Administrator") was pushed off-screen and couldn't be selected.
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        modifier = Modifier.horizontalScroll(rememberScrollState())
+                    ) {
                         UserRole.entries.forEach { role ->
                             FilterChip(
                                 selected = selectedRole == role,
