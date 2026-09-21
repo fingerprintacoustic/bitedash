@@ -10,6 +10,7 @@ import com.example.data.entity.toEntity
 import com.example.data.repository.OrderRepository
 import com.example.data.repository.RestaurantRepository
 import com.example.data.repository.DriverRepository
+import com.example.data.firebase.AuthenticationService
 import com.example.data.firebase.FirestoreAdminSettings
 import com.example.data.firebase.FirestoreDriver
 import com.example.data.firebase.FirestoreOrder
@@ -30,7 +31,10 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
@@ -268,7 +272,17 @@ class BiteDashViewModel(application: Application) : AndroidViewModel(application
 // its own try/catch now, so one bad document is skipped on its own
 // instead of blanking the whole list for everyone. Failures are logged
 // so a future issue shows up in logcat instead of needing guesswork.
+//
+// Both listeners are (re)started whenever the signed-in user changes. A
+// Firestore snapshot listener that errors is dead for good — e.g. the drivers
+// listener, which only an admin may run, dies with "permission denied" when it
+// starts under a non-admin account — and so it used to stay dead after
+// switching to an admin account in the same session, leaving the admin's lists
+// stale until the app was restarted.
+val authUid = AuthenticationService().observeAuthState().map { it?.uid }.distinctUntilChanged()
+
 viewModelScope.launch {
+    authUid.collectLatest {
     try {
         firestoreService.getRestaurantsFlow().collect { firestoreRestaurants ->
             val entities = firestoreRestaurants.mapNotNull { fr ->
@@ -292,12 +306,16 @@ viewModelScope.launch {
                 android.util.Log.e("BiteDashSync", "Failed to save restaurants to local cache: ${e.message}", e)
             }
         }
+    } catch (e: kotlinx.coroutines.CancellationException) {
+        throw e
     } catch (e: Exception) {
         android.util.Log.e("BiteDashSync", "Restaurant listener failed to start: ${e.message}", e)
+    }
     }
 }
 
 viewModelScope.launch {
+    authUid.collectLatest {
     try {
         firestoreService.getDriversFlow().collect { firestoreDrivers ->
             val entities = firestoreDrivers.mapNotNull { fd ->
@@ -314,8 +332,11 @@ viewModelScope.launch {
                 android.util.Log.e("BiteDashSync", "Failed to save drivers to local cache: ${e.message}", e)
             }
         }
+    } catch (e: kotlinx.coroutines.CancellationException) {
+        throw e
     } catch (e: Exception) {
         android.util.Log.e("BiteDashSync", "Driver listener failed to start: ${e.message}", e)
+    }
     }
 }
 
