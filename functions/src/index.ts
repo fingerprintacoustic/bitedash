@@ -3,7 +3,15 @@ import { getFirestore, FieldValue, Firestore } from "firebase-admin/firestore";
 import { onCall, onRequest, HttpsError } from "firebase-functions/v2/https";
 import { defineSecret } from "firebase-functions/params";
 import { logger } from "firebase-functions/v2";
-import { initiateTransaction, pollTransactionStatus, validatePaynowHash, PaynowPaymentStatus } from "./paynow";
+import {
+  initiateTransaction,
+  initiateExpressTransaction,
+  normaliseZimbabweanMobile,
+  pollTransactionStatus,
+  validatePaynowHash,
+  ExpressMethod,
+  PaynowPaymentStatus,
+} from "./paynow";
 
 initializeApp();
 const db = getFirestore();
@@ -16,6 +24,19 @@ const RETURN_URL = `${FUNCTIONS_HOST}/paynowReturn`;
 
 const PAYNOW_INTEGRATION_ID = defineSecret("PAYNOW_INTEGRATION_ID");
 const PAYNOW_INTEGRATION_KEY = defineSecret("PAYNOW_INTEGRATION_KEY");
+
+// Express checkout needs the payer's email. While the Paynow integration is in TEST
+// mode, Paynow only accepts an email that belongs to the merchant account, so
+// PAYNOW_AUTH_EMAIL_OVERRIDE (set in functions/.env) can hold that email for testing.
+// Leave it unset in live mode: the customer's own email is used. Not a secret.
+const paynowAuthEmailOverride = (): string => (process.env.PAYNOW_AUTH_EMAIL_OVERRIDE || "").trim();
+
+// App payment-method values that are paid by approving a prompt on the customer's phone.
+const EXPRESS_METHODS: Record<string, ExpressMethod> = {
+  ECO_CASH: "ecocash",
+  ONE_MONEY: "onemoney",
+  INNBUCKS: "innbucks",
+};
 
 const PAYMENTS_COLLECTION = "payments";
 const ORDERS_COLLECTION = "orders";
@@ -127,6 +148,65 @@ export const initiatePaynowPayment = onCall(
     }
 
     const reference = `BD_${orderId.replace(/[^a-zA-Z0-9]/g, "").slice(0, 20)}_${Date.now()}`;
+
+    // Mobile money paid on the customer's own phone (Paynow express checkout), so they
+    // never leave the app. Only when the app asks for it: an older app build that doesn't
+    // send `express` still gets the hosted Paynow page it knows how to open.
+    if (request.data?.express === true) {
+      const expressMethod = EXPRESS_METHODS[method];
+      if (!expressMethod) {
+        throw new HttpsError("invalid-argument", "This payment method is paid on the Paynow page, not on your phone");
+      }
+      const phone = normaliseZimbabweanMobile(mobileMoneyNumber);
+      if (!phone) {
+        throw new HttpsError("invalid-argument", "Enter a valid Zimbabwean mobile number, for example 0771234567");
+      }
+      const authEmail =
+        paynowAuthEmailOverride() ||
+        String(request.auth.token.email || "") ||
+        `customer+${uid}@example.com`;
+
+      const express = await initiateExpressTransaction({
+        integrationId: PAYNOW_INTEGRATION_ID.value().trim(),
+        integrationKey: PAYNOW_INTEGRATION_KEY.value().trim(),
+        reference,
+        amount,
+        additionalInfo: `BiteDash Order ${orderId}`,
+        returnUrl: RETURN_URL,
+        resultUrl: RESULT_URL,
+        authEmail,
+        phone,
+        method: expressMethod,
+      });
+
+      if (!express.ok || !express.pollUrl) {
+        logger.error(`initiatePaynowPayment (express ${expressMethod}) failed for order ${orderId}: ${express.error}`);
+        throw new HttpsError("internal", express.error || "Paynow rejected the payment request");
+      }
+
+      const expressPayment = await db.collection(PAYMENTS_COLLECTION).add({
+        userId: uid,
+        orderId,
+        amount,
+        currency: "USD",
+        status: "PENDING",
+        method,
+        mode: "express",
+        mobileMoneyNumber: phone,
+        pollUrl: express.pollUrl,
+        paynowReference: reference,
+        createdAt: FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+
+      return {
+        transactionId: expressPayment.id,
+        pollUrl: express.pollUrl,
+        instructions: express.instructions || "",
+        authorizationCode: express.authorizationCode || "",
+        authorizationExpires: express.authorizationExpires || "",
+      };
+    }
 
     const result = await initiateTransaction({
       integrationId: PAYNOW_INTEGRATION_ID.value().trim(),

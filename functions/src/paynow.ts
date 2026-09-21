@@ -98,10 +98,10 @@ export interface InitiateTransactionResult {
  * Call Paynow's "Initiate a Transaction" endpoint. This is the hosted
  * checkout flow: the customer is redirected to browserUrl (a Paynow page)
  * to complete payment via EcoCash, OneMoney, InnBucks, or card, then bounces
- * back to returnUrl. We use this instead of the "remote transaction"
- * (direct USSD push) endpoint because its wire format is fully documented
- * and verifiable; the remote endpoint's exact hash field order could not be
- * confirmed in this environment (see functions/README.md).
+ * back to returnUrl. BiteDash uses this for cards (and for older app builds);
+ * mobile money is paid on the customer's phone via initiateExpressTransaction
+ * below. (Paynow hashes message values in the order they appear, so the express
+ * endpoint's field order is simply the order they're sent in.)
  */
 export async function initiateTransaction(
   params: InitiateTransactionParams
@@ -249,5 +249,119 @@ export async function pollTransactionStatus(
     status: mapStatus(verified.get("status") || ""),
     paidAmount: parseFloat(verified.get("amount") || "0") || 0,
     paynowReference: verified.get("paynowreference") || "",
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Express checkout (mobile money approved on the customer's phone)
+// ---------------------------------------------------------------------------
+
+export const PAYNOW_EXPRESS_URL = "https://www.paynow.co.zw/interface/remotetransaction";
+
+/** The mobile-money methods BiteDash pays through Paynow's express checkout. */
+export type ExpressMethod = "ecocash" | "onemoney" | "innbucks";
+
+/**
+ * Normalise a Zimbabwean mobile number to the local 10-digit form Paynow expects
+ * ("0771234567"). Accepts spaces/dashes and the +263 / 263 international forms.
+ * Returns null if it isn't a plausible Zimbabwean mobile number.
+ */
+export function normaliseZimbabweanMobile(input: string): string | null {
+  let digits = String(input || "").replace(/[^0-9+]/g, "");
+  if (digits.startsWith("+263")) digits = "0" + digits.slice(4);
+  else if (digits.startsWith("263")) digits = "0" + digits.slice(3);
+  return /^07[1-9][0-9]{7}$/.test(digits) ? digits : null;
+}
+
+export interface ExpressTransactionParams extends InitiateTransactionParams {
+  /** Required by Paynow for express checkout: the customer's email. */
+  authEmail: string;
+  /** Subscriber number to debit, in the local 10-digit form. */
+  phone: string;
+  method: ExpressMethod;
+}
+
+export interface ExpressTransactionResult {
+  ok: boolean;
+  pollUrl?: string;
+  paynowReference?: string;
+  /** Text to show the customer, e.g. how to approve the prompt on their phone. */
+  instructions?: string;
+  /** InnBucks only: the code the customer approves in the InnBucks app. */
+  authorizationCode?: string;
+  authorizationExpires?: string;
+  error?: string;
+}
+
+/**
+ * Start a Paynow express checkout: instead of sending the customer to Paynow's page,
+ * Paynow prompts the wallet holder on their own phone (EcoCash / OneMoney) or issues a
+ * code to approve in the InnBucks app. The customer never leaves BiteDash.
+ *
+ * Paynow hashes the message values in the order they appear, so the fields are sent in
+ * the same order they're hashed here.
+ */
+export async function initiateExpressTransaction(
+  params: ExpressTransactionParams
+): Promise<ExpressTransactionResult> {
+  const orderedFields: [string, string][] = [
+    ["id", params.integrationId],
+    ["reference", params.reference],
+    ["amount", params.amount.toFixed(2)],
+    ["additionalinfo", params.additionalInfo],
+    ["returnurl", params.returnUrl],
+    ["resulturl", params.resultUrl],
+    ["authemail", params.authEmail],
+    ["phone", params.phone],
+    ["method", params.method],
+    ["status", "Message"],
+  ];
+
+  const hash = generatePaynowHash(
+    orderedFields.map(([, v]) => v),
+    params.integrationKey
+  );
+
+  const body = new URLSearchParams();
+  for (const [k, v] of orderedFields) body.append(k, v);
+  body.append("hash", hash);
+
+  const response = await fetch(PAYNOW_EXPRESS_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: body.toString(),
+  });
+
+  const responseText = await response.text();
+  if (!response.ok) {
+    return { ok: false, error: `Paynow HTTP ${response.status}` };
+  }
+
+  // Paynow's own error replies (bad number, insufficient balance, method not enabled on
+  // this integration, ...) carry no hash, so read them before insisting on one.
+  const parsed = parsePaynowMessage(responseText);
+  if (parsed.fields.get("status")?.toLowerCase() === "error") {
+    return { ok: false, error: `Paynow error: ${parsed.fields.get("error") || "the request was rejected"}` };
+  }
+
+  const verified = validatePaynowHash(responseText, params.integrationKey);
+  if (!verified) {
+    return { ok: false, error: "Paynow response failed hash verification" };
+  }
+  if (verified.get("status")?.toLowerCase() !== "ok") {
+    return { ok: false, error: verified.get("error") || "Paynow rejected the request" };
+  }
+  const pollUrl = verified.get("pollurl");
+  if (!pollUrl) {
+    return { ok: false, error: "Paynow did not return a status URL" };
+  }
+
+  return {
+    ok: true,
+    pollUrl,
+    paynowReference: verified.get("paynowreference"),
+    instructions: verified.get("instructions"),
+    authorizationCode: verified.get("authorizationcode"),
+    authorizationExpires: verified.get("authorizationexpires"),
   };
 }
