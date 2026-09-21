@@ -289,3 +289,174 @@ export const paynowReturn = onRequest({ region: REGION }, (_req, res) => {
     </body></html>`
   );
 });
+
+// ---------------------------------------------------------------------------
+// Order placement
+// ---------------------------------------------------------------------------
+
+const RESTAURANTS_COLLECTION = "restaurants";
+const MENU_ITEMS_COLLECTION = "menu_items";
+const USERS_COLLECTION = "users";
+const MAX_LINE_ITEMS = 30;
+const MAX_QUANTITY_PER_ITEM = 50;
+const MAX_DRIVER_TIP = 100;
+// Canonical payment-method values the app sends (see mapToFirestorePaymentMethod).
+const ALLOWED_PAYMENT_METHODS = new Set([
+  "ECO_CASH", "ONE_MONEY", "INNBUCKS", "OMARI", "TELECASH", "ZIPIT", "BANK_CARDS", "CASH_ON_DELIVERY",
+]);
+
+const round2 = (n: number): number => Math.round(n * 100) / 100;
+
+/**
+ * Create an order, pricing it here instead of trusting the client.
+ *
+ * The client used to write the order document itself, including its prices and
+ * totalCost. initiatePaynowPayment charges whatever totalCost is on the order
+ * ("amount always comes from the order document"), so a tampered client could
+ * set its own price and pay that. Here the client only says WHAT it wants
+ * (restaurant, menu item ids, quantities, tip) and every price, the delivery
+ * fee and the total are read from Firestore. Unapproved restaurants and sold-out
+ * items are refused here too, not just hidden by the UI.
+ */
+export const placeOrder = onCall({ region: REGION }, async (request) => {
+  if (!request.auth) {
+    throw new HttpsError("unauthenticated", "Sign in required");
+  }
+  const uid = request.auth.uid;
+  const data = request.data ?? {};
+
+  const restaurantId = String(data.restaurantId || "");
+  const paymentMethod = String(data.paymentMethod || "");
+  const deliveryAddress = String(data.deliveryAddress || "").trim().slice(0, 300);
+  const customerPhone = String(data.customerPhone || "").trim().slice(0, 30);
+  const manualMode = data.manualMode !== false;
+  const driverTip = round2(Number(data.driverTip ?? 0));
+
+  if (!restaurantId) {
+    throw new HttpsError("invalid-argument", "restaurantId is required");
+  }
+  if (!ALLOWED_PAYMENT_METHODS.has(paymentMethod)) {
+    throw new HttpsError("invalid-argument", "Unsupported payment method");
+  }
+  if (!deliveryAddress) {
+    throw new HttpsError("invalid-argument", "A delivery address is required");
+  }
+  if (!Number.isFinite(driverTip) || driverTip < 0 || driverTip > MAX_DRIVER_TIP) {
+    throw new HttpsError("invalid-argument", `Tip must be between 0 and ${MAX_DRIVER_TIP}`);
+  }
+
+  // Merge repeated lines for the same item, validating ids and quantities.
+  const rawItems: unknown[] = Array.isArray(data.items) ? data.items : [];
+  if (rawItems.length === 0 || rawItems.length > MAX_LINE_ITEMS) {
+    throw new HttpsError("invalid-argument", `An order needs between 1 and ${MAX_LINE_ITEMS} items`);
+  }
+  const quantities = new Map<string, number>();
+  for (const raw of rawItems) {
+    const line = (raw ?? {}) as { menuItemId?: unknown; quantity?: unknown };
+    const menuItemId = String(line.menuItemId || "");
+    const quantity = Number(line.quantity);
+    if (!menuItemId || menuItemId.includes("/") || !Number.isInteger(quantity) || quantity < 1) {
+      throw new HttpsError("invalid-argument", "Each item needs a menuItemId and a whole quantity of at least 1");
+    }
+    const merged = (quantities.get(menuItemId) ?? 0) + quantity;
+    if (merged > MAX_QUANTITY_PER_ITEM) {
+      throw new HttpsError("invalid-argument", `At most ${MAX_QUANTITY_PER_ITEM} of one item per order`);
+    }
+    quantities.set(menuItemId, merged);
+  }
+
+  const restaurantSnap = await db.collection(RESTAURANTS_COLLECTION).doc(restaurantId).get();
+  const restaurant = restaurantSnap.data();
+  if (!restaurantSnap.exists || !restaurant || restaurant.isActive === false) {
+    throw new HttpsError("not-found", "Restaurant not found");
+  }
+  if (restaurant.isApproved === false) {
+    throw new HttpsError("failed-precondition", "This restaurant isn't taking orders yet");
+  }
+
+  const menuRefs = [...quantities.keys()].map((id) => db.collection(MENU_ITEMS_COLLECTION).doc(id));
+  const menuSnaps = await db.getAll(...menuRefs);
+
+  let subtotal = 0;
+  const items = menuSnaps.map((snap) => {
+    const item = snap.data();
+    if (!snap.exists || !item || item.restaurantId !== restaurantId) {
+      throw new HttpsError("invalid-argument", "An item in your cart isn't on this restaurant's menu");
+    }
+    if (item.isAvailable === false) {
+      throw new HttpsError("failed-precondition", `${item.name || "An item"} is sold out`);
+    }
+    const price = Number(item.price);
+    if (!Number.isFinite(price) || price <= 0) {
+      logger.error(`placeOrder: menu item ${snap.id} has an invalid price`, { price: item.price });
+      throw new HttpsError("failed-precondition", `${item.name || "An item"} can't be ordered right now`);
+    }
+    const quantity = quantities.get(snap.id) as number;
+    subtotal += price * quantity;
+    return {
+      menuItemId: snap.id,
+      itemId: snap.id,
+      name: String(item.name || ""),
+      itemName: String(item.name || ""),
+      price,
+      quantity,
+      notes: "",
+    };
+  });
+
+  const deliveryFeeRaw = Number(restaurant.deliveryFee);
+  const deliveryFee = Number.isFinite(deliveryFeeRaw) && deliveryFeeRaw > 0 ? round2(deliveryFeeRaw) : 0;
+  subtotal = round2(subtotal);
+  const totalCost = round2(subtotal + deliveryFee + driverTip);
+
+  const userSnap = await db.collection(USERS_COLLECTION).doc(uid).get();
+  const profile = userSnap.data() ?? {};
+
+  const isCash = paymentMethod === "CASH_ON_DELIVERY";
+  const itemsSummary = items.map((i) => `${i.name} x${i.quantity}`).join(", ");
+  const status = manualMode ? "PENDING_ACCEPTANCE" : "PREPARING";
+
+  const orderRef = db.collection(ORDERS_COLLECTION).doc();
+  await orderRef.set({
+    userId: uid,
+    restaurantId,
+    restaurantName: String(restaurant.name || ""),
+    restaurantAddress: String(restaurant.location || ""),
+    restaurantPhone: "",
+    customerName: String(profile.displayName || ""),
+    customerAddress: deliveryAddress,
+    customerPhone,
+    itemsSummary,
+    items,
+    subtotal,
+    deliveryFee,
+    driverTip,
+    totalCost,
+    status,
+    statusHistory: [],
+    driverId: null,
+    driverName: null,
+    deliveryStatus: "UNASSIGNED",
+    paymentMethod,
+    paymentRef: "",
+    paymentStatus: isCash ? "CASH_ON_DELIVERY" : "PENDING",
+    isSettled: false,
+    restaurantPayoutAmount: 0,
+    driverPayoutAmount: 0,
+    platformFee: 0,
+    createdAt: FieldValue.serverTimestamp(),
+    updatedAt: FieldValue.serverTimestamp(),
+  });
+
+  logger.info(`placeOrder: created order ${orderRef.id} for ${uid}`, { restaurantId, totalCost });
+  return {
+    orderId: orderRef.id,
+    restaurantName: String(restaurant.name || ""),
+    itemsSummary,
+    subtotal,
+    deliveryFee,
+    driverTip,
+    totalCost,
+    status,
+  };
+});
