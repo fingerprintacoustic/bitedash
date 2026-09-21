@@ -64,7 +64,16 @@ class RestaurantOrderViewModel(
                         // arrives) — so that filter silently hid every order from
                         // this screen, regardless of payment method. Show all orders
                         // for this restaurant instead.
-                        val orders = firestoreOrders.map { it.toRestaurantOrder() }
+                        //
+                        // Now that the Paynow webhook does mark online orders PAID, hide
+                        // the ones that are still waiting on an online payment. The order
+                        // is saved before the customer pays, so an abandoned, failed or
+                        // still-pending payment would otherwise show up as a normal new
+                        // order that the restaurant could accept and cook for nothing.
+                        // Cash on Delivery is payable on arrival, so it always shows.
+                        val orders = firestoreOrders
+                            .filter { it.paymentMethod == "CASH_ON_DELIVERY" || it.paymentStatus == "PAID" || it.paymentStatus == "COMPLETED" }
+                            .map { it.toRestaurantOrder() }
                         
                         _uiState.update {
                             it.copy(

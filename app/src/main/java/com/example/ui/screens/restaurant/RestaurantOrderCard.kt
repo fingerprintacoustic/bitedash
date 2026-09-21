@@ -233,7 +233,12 @@ private fun PaymentBadge(method: String, reference: String) {
         ) {
             val isCash = method == "CASH_ON_DELIVERY"
             Text(
-                text = if (isCash) "Cash on Delivery" else method.ifEmpty { "PAID" },
+                text = when {
+                    isCash -> "Cash on Delivery"
+                    method.isEmpty() -> "PAID"
+                    // "BANK_CARDS" -> "Bank Cards", "ECO_CASH" -> "EcoCash", etc.
+                    else -> com.example.data.payment.PaymentMethod.fromString(method).displayName
+                },
                 style = MaterialTheme.typography.labelMedium,
                 fontWeight = FontWeight.SemiBold,
                 color = MaterialTheme.colorScheme.onPrimaryContainer
