@@ -37,6 +37,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.tasks.await
 
 sealed interface PaymentStep {
     object Idle : PaymentStep
@@ -737,6 +738,48 @@ viewModelScope.launch {
         else -> method.uppercase().replace(" ", "_").replace("'", "")
     }
 
+    // What the placeOrder Cloud Function created, with the server's own figures.
+    private data class PlacedOrder(
+        val orderId: String,
+        val itemsSummary: String,
+        val status: String,
+        val totalCost: Double
+    )
+
+    // Calls the placeOrder Cloud Function. Sends only the customer's choices (item
+    // ids, quantities, tip, address, payment channel); it prices and saves the order.
+    private suspend fun placeOrderOnServer(
+        restaurantId: String,
+        cartItems: List<CartItem>,
+        customerPhone: String,
+        method: String
+    ): PlacedOrder {
+        val response = com.google.firebase.functions.FirebaseFunctions.getInstance()
+            .getHttpsCallable("placeOrder")
+            .call(
+                hashMapOf(
+                    "restaurantId" to restaurantId,
+                    "items" to cartItems.map { mapOf("menuItemId" to it.menuItem.id, "quantity" to it.quantity) },
+                    "driverTip" to _driverTip.value,
+                    "deliveryAddress" to _deliveryAddressInput.value,
+                    "customerPhone" to customerPhone,
+                    "paymentMethod" to mapToFirestorePaymentMethod(method),
+                    "manualMode" to _isManualMode.value
+                )
+            )
+            .await()
+            .data as? Map<*, *>
+            ?: throw IllegalStateException("Unexpected response from the order server")
+
+        return PlacedOrder(
+            orderId = response["orderId"] as? String ?: throw IllegalStateException("The order server returned no order id"),
+            itemsSummary = response["itemsSummary"] as? String ?: "",
+            status = response["status"] as? String ?: "PENDING_ACCEPTANCE",
+            totalCost = (response["totalCost"] as? Number)?.toDouble()
+                ?: throw IllegalStateException("The order server returned no total")
+        )
+    }
+
     // Places the order, then — unless paying Cash on Delivery — takes the
     // customer through a real Paynow payment (hosted checkout redirect +
     // server-verified confirmation) before the order is treated as paid.
@@ -747,7 +790,6 @@ viewModelScope.launch {
 
         val paymentPhone = _phoneInput.value
         val method = _checkoutMethod.value
-        val sum = getCartTotal()
         val isCash = method == "USD Cash"
 
         // Simple validation
@@ -769,10 +811,6 @@ viewModelScope.launch {
         viewModelScope.launch {
             _paymentStep.value = PaymentStep.SendingPush
 
-            val itemsSummaryStr = cartItems.joinToString(", ") { "${it.menuItem.name} x${it.quantity}" }
-            val initialStatus = if (_isManualMode.value) "PENDING_ACCEPTANCE" else "PREPARING"
-            val subtotal = cartItems.sumOf { it.menuItem.price * it.quantity }
-
             // Best-effort lookup of the customer's profile for name/address on
             // the order — the order still goes through even if this fails.
             val customerProfile = try {
@@ -781,47 +819,46 @@ viewModelScope.launch {
                 null
             }
 
-            // Write the order through to Firestore FIRST. This is the doc a
-            // restaurant owner's Order Management screen (getRestaurantOrdersFlow)
-            // and the admin Orders tab (getActiveOrdersFlow) actually read from —
-            // without this, an order only ever existed on the customer's own
-            // device and no restaurant could ever see or accept it.
-            val firestoreOrder = FirestoreOrder(
-                userId = uid,
-                restaurantId = restaurant.id,
-                restaurantName = restaurant.name,
-                restaurantAddress = restaurant.location,
-                customerName = customerProfile?.displayName ?: "",
-                customerAddress = _deliveryAddressInput.value.ifBlank { customerProfile?.address ?: "" },
-                customerPhone = paymentPhone,
-                itemsSummary = itemsSummaryStr,
-                items = cartItems.map {
-                    com.example.data.firebase.FirestoreOrderItem(
-                        menuItemId = it.menuItem.id,
-                        itemId = it.menuItem.id,
-                        name = it.menuItem.name,
-                        itemName = it.menuItem.name,
-                        price = it.menuItem.price,
-                        quantity = it.quantity
-                    )
-                },
-                subtotal = subtotal,
-                deliveryFee = restaurant.deliveryFee,
-                driverTip = _driverTip.value,
-                totalCost = sum,
-                status = initialStatus,
-                paymentMethod = mapToFirestorePaymentMethod(method),
-                paymentRef = "",
-                paymentStatus = if (isCash) "CASH_ON_DELIVERY" else "PENDING"
-            )
-
-            val firestoreOrderId = firestoreService.createOrder(firestoreOrder)
-            if (firestoreOrderId == null) {
+            // Write the order through to Firestore FIRST, via the placeOrder Cloud
+            // Function. That doc is what a restaurant owner's Order Management screen
+            // (getRestaurantOrdersFlow) and the admin Orders tab (getActiveOrdersFlow)
+            // actually read from — without it an order only ever existed on the
+            // customer's own device and no restaurant could ever see or accept it.
+            //
+            // We only say WHAT the customer chose (item ids and quantities, tip,
+            // address); the server prices it from Firestore. Sending prices from here
+            // let a tampered client set its own total, which initiatePaynowPayment
+            // would then charge as the order's amount.
+            val placed = try {
+                placeOrderOnServer(restaurant.id, cartItems, paymentPhone, method)
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: com.google.firebase.functions.FirebaseFunctionsException) {
+                // The server's own message is user-readable for these ("Test Wings is
+                // sold out", "This restaurant isn't taking orders yet").
+                val serverMessage = when (e.code) {
+                    com.google.firebase.functions.FirebaseFunctionsException.Code.INVALID_ARGUMENT,
+                    com.google.firebase.functions.FirebaseFunctionsException.Code.FAILED_PRECONDITION,
+                    com.google.firebase.functions.FirebaseFunctionsException.Code.NOT_FOUND -> e.message
+                    else -> null
+                }
+                _paymentStep.value = PaymentStep.Error(
+                    serverMessage ?: "Couldn't reach the server to place your order. Please check your connection and try again."
+                )
+                return@launch
+            } catch (e: Exception) {
                 _paymentStep.value = PaymentStep.Error(
                     "Couldn't reach the server to place your order. Please check your connection and try again."
                 )
                 return@launch
             }
+
+            val firestoreOrderId = placed.orderId
+            // The server's numbers, not the cart's: they're what was actually saved and
+            // what gets charged, and they can differ if a price changed since the menu loaded.
+            val itemsSummaryStr = placed.itemsSummary
+            val initialStatus = placed.status
+            val orderTotal = placed.totalCost
 
             // Save this delivery address back to the customer's profile if
             // it's new or changed, so it prefills as the default next time
@@ -846,7 +883,7 @@ viewModelScope.launch {
                     com.example.data.payment.PaymentRequest(
                         orderId = firestoreOrderId,
                         userId = uid,
-                        amount = sum,
+                        amount = orderTotal,
                         method = com.example.data.payment.PaymentMethod.fromString(mapToFirestorePaymentMethod(method)),
                         mobileMoneyNumber = paymentPhone,
                         description = "BiteDash Order $firestoreOrderId"
@@ -895,7 +932,7 @@ viewModelScope.launch {
             val newOrder = OrderEntity(
                 restaurantName = restaurant.name,
                 itemsSummary = itemsSummaryStr,
-                totalCost = sum,
+                totalCost = orderTotal,
                 paymentMethod = method,
                 paymentPhone = paymentPhone,
                 status = initialStatus,
