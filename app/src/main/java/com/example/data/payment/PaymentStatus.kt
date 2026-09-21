@@ -25,11 +25,24 @@ enum class PaymentMethod(val displayName: String, val value: String) {
     ECO_CASH("EcoCash", "ECO_CASH"),
     ONE_MONEY("OneMoney", "ONE_MONEY"),
     INNBUCKS("InnBucks", "INNBUCKS"),
+    // The other channels the checkout offers (these values are what
+    // BiteDashViewModel.mapToFirestorePaymentMethod produces for them). They all
+    // go through Paynow's hosted checkout page like the mobile-money ones. They
+    // were missing here, so they fell through fromString() to CASH_ON_DELIVERY and
+    // checkout failed with "Cash on Delivery does not go through Paynow".
+    OMARI("O'Mari", "OMARI"),
+    TELECASH("Telecash", "TELECASH"),
+    ZIPIT("ZIPIT", "ZIPIT"),
+    BANK_CARDS("Bank Cards", "BANK_CARDS"),
+    // Any other online channel: still Paynow, never cash.
+    ONLINE("Online payment", "PAYNOW"),
     CASH_ON_DELIVERY("Cash on Delivery", "CASH_ON_DELIVERY");
 
     companion object {
+        // An unrecognised method is treated as an online payment, not as cash: falling
+        // back to cash meant a channel the app forgot to list could never be paid for.
         fun fromString(value: String): PaymentMethod {
-            return entries.find { it.value == value } ?: CASH_ON_DELIVERY
+            return entries.find { it.value == value } ?: ONLINE
         }
     }
 }
