@@ -384,6 +384,13 @@ const MAX_DRIVER_TIP = 100;
 const ALLOWED_PAYMENT_METHODS = new Set([
   "ECO_CASH", "ONE_MONEY", "INNBUCKS", "OMARI", "TELECASH", "ZIPIT", "BANK_CARDS", "CASH_ON_DELIVERY",
 ]);
+// Mobile-money wallets a customer can pay by sending money directly to the business's own
+// number and telling us the reference, without going through Paynow at all. Used while the
+// Paynow integration isn't live yet (or for any wallet Paynow doesn't support). Cards and
+// bank transfers aren't in this set: there's no sender reference to manually check for a
+// card, and ZIPIT needs bank details this flow doesn't collect.
+const MANUAL_PAYMENT_METHODS = new Set(["ECO_CASH", "ONE_MONEY", "INNBUCKS", "OMARI", "TELECASH"]);
+const MAX_PAYMENT_REFERENCE_LENGTH = 120;
 
 const round2 = (n: number): number => Math.round(n * 100) / 100;
 
@@ -411,12 +418,24 @@ export const placeOrder = onCall({ region: REGION }, async (request) => {
   const customerPhone = String(data.customerPhone || "").trim().slice(0, 30);
   const manualMode = data.manualMode !== false;
   const driverTip = round2(Number(data.driverTip ?? 0));
+  // Payment-related "manual" — the customer already sent the money themselves and is
+  // reporting it, unrelated to manualMode above (the restaurant's accept-orders setting).
+  const manualPayment = data.manualPayment === true;
+  const paymentReference = String(data.paymentReference || "").trim().slice(0, MAX_PAYMENT_REFERENCE_LENGTH);
 
   if (!restaurantId) {
     throw new HttpsError("invalid-argument", "restaurantId is required");
   }
   if (!ALLOWED_PAYMENT_METHODS.has(paymentMethod)) {
     throw new HttpsError("invalid-argument", "Unsupported payment method");
+  }
+  if (manualPayment) {
+    if (!MANUAL_PAYMENT_METHODS.has(paymentMethod)) {
+      throw new HttpsError("invalid-argument", "This payment method can't be reported as a manual transfer");
+    }
+    if (!paymentReference) {
+      throw new HttpsError("invalid-argument", "Enter the reference or confirmation you got when you sent the money");
+    }
   }
   if (!deliveryAddress) {
     throw new HttpsError("invalid-argument", "A delivery address is required");
@@ -519,7 +538,10 @@ export const placeOrder = onCall({ region: REGION }, async (request) => {
     deliveryStatus: "UNASSIGNED",
     paymentMethod,
     paymentRef: "",
-    paymentStatus: isCash ? "CASH_ON_DELIVERY" : "PENDING",
+    // Not PAID: an admin still has to check the money actually arrived (see
+    // confirmManualPayment) before the restaurant sees this order.
+    paymentStatus: manualPayment ? "AWAITING_MANUAL_CONFIRMATION" : isCash ? "CASH_ON_DELIVERY" : "PENDING",
+    customerPaymentReference: manualPayment ? paymentReference : "",
     isSettled: false,
     restaurantPayoutAmount: 0,
     driverPayoutAmount: 0,
@@ -528,8 +550,9 @@ export const placeOrder = onCall({ region: REGION }, async (request) => {
     updatedAt: FieldValue.serverTimestamp(),
   });
 
-  logger.info(`placeOrder: created order ${orderRef.id} for ${uid}`, { restaurantId, totalCost });
+  logger.info(`placeOrder: created order ${orderRef.id} for ${uid}`, { restaurantId, totalCost, manualPayment });
   return {
+    manualPayment,
     orderId: orderRef.id,
     restaurantName: String(restaurant.name || ""),
     itemsSummary,

@@ -317,8 +317,20 @@ service cloud.firestore {
       allow delete: if false;
     }
     
+    // ==================== PUBLIC SETTINGS ====================
+
+    match /public_settings/{settingsId} {
+      // Anyone signed in can read this — it's the business's own EcoCash /
+      // InnBucks / OneMoney / Telecash numbers, shown to a customer at
+      // checkout so they know where to send a manual mobile-money payment.
+      // Unlike admin_settings (payment gateway credentials), there's
+      // nothing sensitive here.
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+
     // ==================== ADMIN SETTINGS ====================
-    
+
     match /admin_settings/{settingsId} {
       // Admin-only. This document holds live Paynow/EcoCash/OneMoney/
       // InnBucks credentials in plain text — "any authenticated user"
