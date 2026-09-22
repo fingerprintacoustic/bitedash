@@ -1,6 +1,6 @@
 # BiteDash status
 
-Last updated: 2026-09-21. Firebase project: `bitedash-1e078`. Branch: `main` (everything below is pushed).
+Last updated: 2026-09-22. Firebase project: `bitedash-1e078`. Branch: `main` (everything below is pushed).
 
 ## Deployed to production (matches `main`)
 
@@ -16,6 +16,17 @@ Sign-up and role gating for customer / restaurant / driver / admin, Switch Role,
 driver and restaurant approval, and the full Cash on Delivery lifecycle (place, accept, prepare, ready, driver
 accepts/picks up/delivers, customer sees live status). Checkout now goes through `placeOrder`.
 Live rules were checked over REST as customer, driver, owner and signed-out user.
+
+## Manual mobile-money payments (works right now, independent of Paynow)
+
+Added 2026-09-22: while Paynow isn't live, checkout for EcoCash/OneMoney/InnBucks/Telecash/O'Mari shows the
+business's own receiving number and asks the customer for the transfer reference, instead of using Paynow at all.
+An admin checks the number and confirms in the new **Manual Pay** tab of the Admin Control Hub before the restaurant
+sees the order (same "hide until paid" pattern as online orders). Controlled by a single flag,
+`BiteDashViewModel.PAYNOW_LIVE` (currently `false`) — flip it once Paynow is live to return these five methods to
+the normal automatic Paynow flow; nothing else needs to change. Set the receiving numbers in Manual Pay before
+relying on this (nothing is pre-filled). Verified end to end on a device and over REST, including that the
+restaurant cannot see an unconfirmed order.
 
 ## Online payments (Paynow): EcoCash express checkout verified in TEST mode
 
@@ -94,5 +105,11 @@ The signed AAB is built by `.github/workflows/build-release-aab.yml` (manual run
 repository secrets `KEYSTORE_BASE64`, `STORE_PASSWORD`, `KEY_PASSWORD`, `PAYNOW_INTEGRATION_ID`,
 `PAYNOW_INTEGRATION_KEY`. `app/build.gradle.kts` is at `versionCode = 26` / `versionName = "6.20"`; the version code
 must be higher than the highest one already uploaded to Google Play (raise it if Play already has 26 or more).
-A release build of 6.20 was made from `main` (Actions run 35561220151, artifact `BiteDash-release-aab`); it is signed
-with the release certificate (CN=Fingerprint Acoustic), not the debug key. Uploading to Play is done in the Play Console.
+A release build of 6.20 was made from `main` at commit `286fb80` (Actions run 35704031567, artifact
+`BiteDash-release-aab`), copied to `C:\Users\finge\Downloads\BiteDash-6.20-code26-release.aab`; it is signed with the
+release certificate (CN=Fingerprint Acoustic), not the debug key. Uploading to Play is done in the Play Console.
+
+## Branches
+
+`feature/pesepay`: created locally, empty (no commits) — set aside for a possible Pesepay integration if Paynow's
+card support doesn't work out. Not pushed. Safe to delete if not needed.
