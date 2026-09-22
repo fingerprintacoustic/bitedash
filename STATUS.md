@@ -109,8 +109,9 @@ The signed AAB is built by `.github/workflows/build-release-aab.yml` (manual run
 repository secrets `KEYSTORE_BASE64`, `STORE_PASSWORD`, `KEY_PASSWORD`, `PAYNOW_INTEGRATION_ID`,
 `PAYNOW_INTEGRATION_KEY`. `app/build.gradle.kts` is at `versionCode = 26` / `versionName = "6.20"`; the version code
 must be higher than the highest one already uploaded to Google Play (raise it if Play already has 26 or more).
-A release build of 6.20 was made from `main` at commit `286fb80` (Actions run 35704031567, artifact
-`BiteDash-release-aab`), copied to `C:\Users\finge\Downloads\BiteDash-6.20-code26-release.aab`; it is signed with the
+A release build of 6.20 was made from `main` at commit `e9efa0a` (Actions run 35708691912, artifact
+`BiteDash-release-aab`), copied to `C:\Users\finge\Downloads\BiteDash-6.20-code26-release.aab` (this replaces any
+earlier copy — always the one to upload). It is signed with the
 release certificate (CN=Fingerprint Acoustic), not the debug key. Uploading to Play is done in the Play Console.
 
 ## Branches
