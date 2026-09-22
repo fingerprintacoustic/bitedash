@@ -5317,11 +5317,18 @@ private fun ManualPaymentsTab(viewModel: BiteDashViewModel) {
             )
         }
         wallets.forEach { wallet ->
+            // Same real prefixes as the checkout screen: NetOne (OneMoney) is 071,
+            // Telecel (Telecash) is 073, everything else here is Econet (077/078).
+            val examplePrefix = when (wallet) {
+                "OneMoney" -> "0711234567"
+                "Telecash" -> "0731234567"
+                else -> "0771234567"
+            }
             OutlinedTextField(
                 value = numberDrafts[wallet].orEmpty(),
                 onValueChange = { numberDrafts = numberDrafts + (wallet to it); numbersSaved = false },
                 label = { Text("$wallet number") },
-                placeholder = { Text("e.g. 0771234567") },
+                placeholder = { Text("e.g. $examplePrefix") },
                 modifier = Modifier.fillMaxWidth().testTag("manual_number_input_$wallet"),
                 singleLine = true
             )
