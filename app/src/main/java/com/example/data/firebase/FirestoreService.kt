@@ -88,6 +88,25 @@ class FirestoreService {
         }
     }
 
+    // The business's own EcoCash/OneMoney/InnBucks/Telecash numbers, shown to a customer
+    // paying manually so they know where to send the money. Public read (any signed-in
+    // user), admin-only write — see firestore.rules match /public_settings/{settingsId}.
+    // Keys match the app's payment-method labels ("EcoCash", "OneMoney", ...).
+    suspend fun getPublicPaymentNumbers(): Map<String, String> {
+        val snapshot = db.collection("public_settings").document("payment").get().await()
+        @Suppress("UNCHECKED_CAST")
+        return (snapshot.data as? Map<String, String>) ?: emptyMap()
+    }
+
+    suspend fun setPublicPaymentNumbers(numbers: Map<String, String>): Boolean {
+        return try {
+            db.collection("public_settings").document("payment").set(numbers).await()
+            true
+        } catch (e: Exception) {
+            false
+        }
+    }
+
     suspend fun getUserByEmail(email: String): FirestoreUser? {
         return try {
             val querySnapshot = db.collection(COLLECTION_USERS)
@@ -577,6 +596,40 @@ class FirestoreService {
                 .document(order.id)
                 .set(order)
                 .await()
+            true
+        } catch (e: Exception) {
+            false
+        }
+    }
+
+    // Admin has checked the manual mobile-money transfer actually arrived — this is what
+    // finally lets the restaurant see the order (see getRestaurantOrdersFlow's filter).
+    suspend fun confirmManualPayment(orderId: String): Boolean {
+        return try {
+            db.collection(COLLECTION_ORDERS).document(orderId).update(
+                mapOf(
+                    "paymentStatus" to "PAID",
+                    "updatedAt" to Timestamp.now()
+                )
+            ).await()
+            true
+        } catch (e: Exception) {
+            false
+        }
+    }
+
+    // No matching transfer was found. Also cancels the order (status, not just
+    // paymentStatus) so it drops off both the admin's and the restaurant's active lists —
+    // otherwise it would sit forever as neither payable nor actionable.
+    suspend fun rejectManualPayment(orderId: String): Boolean {
+        return try {
+            db.collection(COLLECTION_ORDERS).document(orderId).update(
+                mapOf(
+                    "paymentStatus" to "FAILED",
+                    "status" to "CANCELLED",
+                    "updatedAt" to Timestamp.now()
+                )
+            ).await()
             true
         } catch (e: Exception) {
             false

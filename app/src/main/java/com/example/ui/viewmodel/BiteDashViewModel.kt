@@ -56,7 +56,9 @@ sealed interface PaymentStep {
     object ProcessingConfirmation : PaymentStep
     /** Paynow hosted checkout is ready — customer needs to open [url] to pay. */
     data class RedirectToPaynow(val url: String) : PaymentStep
-    data class Success(val transactionRef: String) : PaymentStep
+    /** [awaitingConfirmation]: a manual mobile-money payment — not actually confirmed paid yet,
+     *  an admin still has to check the money arrived. */
+    data class Success(val transactionRef: String, val awaitingConfirmation: Boolean = false) : PaymentStep
     data class Error(val message: String) : PaymentStep
 }
 
@@ -260,7 +262,33 @@ class BiteDashViewModel(application: Application) : AndroidViewModel(application
     // verification, and O'Mari/ZIPIT aren't enabled). Picking one explains this and blocks
     // the pay button instead of failing at Paynow. To switch a channel on once Paynow
     // enables it, just remove it from this set.
-    val unavailableCheckoutMethods = setOf("OneMoney", "Telecash", "O'Mari", "ZIPIT", "Bank Cards")
+    val unavailableCheckoutMethods = setOf("ZIPIT", "Bank Cards")
+
+    // While the Paynow integration isn't live (see PAYNOW_LIVE), these wallets are paid
+    // manually instead: the customer sends the money themselves to the business's own
+    // number and reports the reference, and an admin checks it arrived before the
+    // restaurant sees the order. Flip PAYNOW_LIVE once Paynow confirms the integration is
+    // live, and these go back to the normal automatic Paynow flow with no other changes
+    // needed here.
+    val manualPaymentMethods = setOf("EcoCash", "OneMoney", "InnBucks", "Telecash", "O'Mari")
+    private val PAYNOW_LIVE = false
+
+    private val _manualPaymentReference = MutableStateFlow("")
+    val manualPaymentReference: StateFlow<String> = _manualPaymentReference.asStateFlow()
+    fun setManualPaymentReference(value: String) { _manualPaymentReference.value = value }
+
+    private val _businessPaymentNumbers = MutableStateFlow<Map<String, String>>(emptyMap())
+    val businessPaymentNumbers: StateFlow<Map<String, String>> = _businessPaymentNumbers.asStateFlow()
+
+    init {
+        viewModelScope.launch {
+            try {
+                _businessPaymentNumbers.value = firestoreService.getPublicPaymentNumbers()
+            } catch (e: Exception) {
+                // Best-effort: the reference field still works without the number shown.
+            }
+        }
+    }
 
     val checkoutMethods = listOf("EcoCash", "InnBucks", "OneMoney", "O'Mari", "Telecash", "ZIPIT", "Bank Cards", "USD Cash")
 
@@ -433,6 +461,32 @@ viewModelScope.launch {
     fun cancelOrder(orderId: String) {
         viewModelScope.launch {
             firestoreService.updateOrderStatus(orderId, "CANCELLED")
+        }
+    }
+
+    // Manual mobile-money orders waiting on an admin to check the transfer arrived,
+    // derived from the same live feed activeOrdersForAdmin already collects.
+    val manualPaymentsAwaitingConfirmation: StateFlow<List<FirestoreOrder>> = activeOrdersForAdmin
+        .map { orders -> orders.filter { it.paymentStatus == "AWAITING_MANUAL_CONFIRMATION" } }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    fun confirmManualPayment(orderId: String) {
+        viewModelScope.launch {
+            firestoreService.confirmManualPayment(orderId)
+        }
+    }
+
+    fun rejectManualPayment(orderId: String) {
+        viewModelScope.launch {
+            firestoreService.rejectManualPayment(orderId)
+        }
+    }
+
+    fun updateBusinessPaymentNumbers(numbers: Map<String, String>) {
+        viewModelScope.launch {
+            if (firestoreService.setPublicPaymentNumbers(numbers)) {
+                _businessPaymentNumbers.value = numbers
+            }
         }
     }
 
@@ -775,7 +829,9 @@ viewModelScope.launch {
         restaurantId: String,
         cartItems: List<CartItem>,
         customerPhone: String,
-        method: String
+        method: String,
+        manualPayment: Boolean = false,
+        paymentReference: String = ""
     ): PlacedOrder {
         val response = com.google.firebase.functions.FirebaseFunctions.getInstance()
             .getHttpsCallable("placeOrder")
@@ -787,7 +843,11 @@ viewModelScope.launch {
                     "deliveryAddress" to _deliveryAddressInput.value,
                     "customerPhone" to customerPhone,
                     "paymentMethod" to mapToFirestorePaymentMethod(method),
-                    "manualMode" to _isManualMode.value
+                    "manualMode" to _isManualMode.value,
+                    // Payment-manual (customer already sent the money) — unrelated to
+                    // manualMode above (the restaurant's accept-orders setting).
+                    "manualPayment" to manualPayment,
+                    "paymentReference" to paymentReference
                 )
             )
             .await()
@@ -814,6 +874,7 @@ viewModelScope.launch {
         val paymentPhone = _phoneInput.value
         val method = _checkoutMethod.value
         val isCash = method == "USD Cash"
+        val isManualPayment = !PAYNOW_LIVE && method in manualPaymentMethods
 
         if (method in unavailableCheckoutMethods) {
             _paymentStep.value = PaymentStep.Error(
@@ -827,6 +888,12 @@ viewModelScope.launch {
             _paymentStep.value = PaymentStep.Error(
                 if (method == "Bank Cards") "Please enter a contact phone number (at least 9 digits)."
                 else "Please enter a valid Zimbabwean mobile money number."
+            )
+            return
+        }
+        if (isManualPayment && _manualPaymentReference.value.trim().length < 3) {
+            _paymentStep.value = PaymentStep.Error(
+                "Please enter the reference or confirmation you got after sending the $method payment."
             )
             return
         }
@@ -863,7 +930,11 @@ viewModelScope.launch {
             // let a tampered client set its own total, which initiatePaynowPayment
             // would then charge as the order's amount.
             val placed = try {
-                placeOrderOnServer(restaurant.id, cartItems, paymentPhone, method)
+                placeOrderOnServer(
+                    restaurant.id, cartItems, paymentPhone, method,
+                    manualPayment = isManualPayment,
+                    paymentReference = _manualPaymentReference.value.trim()
+                )
             } catch (e: kotlinx.coroutines.CancellationException) {
                 throw e
             } catch (e: com.google.firebase.functions.FirebaseFunctionsException) {
@@ -909,7 +980,12 @@ viewModelScope.launch {
             // Delivery (which has no Paynow transaction).
             var ref = firestoreOrderId
 
-            if (!isCash) {
+            if (isManualPayment) {
+                // The order is already saved with paymentStatus AWAITING_MANUAL_CONFIRMATION
+                // (see placeOrder) and customerPaymentReference set — nothing left to do here.
+                // An admin checks the money arrived before the restaurant sees this order.
+                _manualPaymentReference.value = ""
+            } else if (!isCash) {
                 // Still SendingPush here — we're now asking initiatePaynowPayment
                 // to actually start the transaction with Paynow.
                 val paymentResult = paymentRepository.initiatePayment(
@@ -990,7 +1066,7 @@ viewModelScope.launch {
             val orderId = repository.insertOrder(newOrder)
             val insertedOrder = newOrder.copy(id = orderId.toInt())
 
-            _paymentStep.value = PaymentStep.Success(ref)
+            _paymentStep.value = PaymentStep.Success(ref, awaitingConfirmation = isManualPayment)
             _activeOrder.value = insertedOrder
 
             // Clear Cart and select restaurant

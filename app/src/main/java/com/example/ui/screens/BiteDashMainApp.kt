@@ -940,6 +940,8 @@ fun RestaurantDetailScreen(restaurant: Restaurant, viewModel: BiteDashViewModel)
 fun CartScreen(viewModel: BiteDashViewModel) {
     val cart by viewModel.cart.collectAsStateWithLifecycle()
     val checkoutMethod by viewModel.checkoutMethod.collectAsStateWithLifecycle()
+    val manualPaymentReference by viewModel.manualPaymentReference.collectAsStateWithLifecycle()
+    val businessPaymentNumbers by viewModel.businessPaymentNumbers.collectAsStateWithLifecycle()
     val phoneInput by viewModel.phoneInput.collectAsStateWithLifecycle()
     val deliveryAddressInput by viewModel.deliveryAddressInput.collectAsStateWithLifecycle()
     val paymentStep by viewModel.paymentStep.collectAsStateWithLifecycle()
@@ -1283,15 +1285,17 @@ fun CartScreen(viewModel: BiteDashViewModel) {
                     "Telecash" -> "e.g. 0731234567"
                     else -> "e.g. 0771234567"
                 }
-                val merchantLabel = when (checkoutMethod) {
-                    "USD Cash" -> "Cash On Delivery (COD) - Pay driver in physical USD cash"
+                val isManualWallet = checkoutMethod in viewModel.manualPaymentMethods
+                val merchantLabel = when {
+                    checkoutMethod == "USD Cash" -> "Cash On Delivery (COD) - Pay driver in physical USD cash"
+                    isManualWallet -> "Send the payment yourself, then tell us the reference below"
                     // Every online channel is paid on Paynow's own secure page (the server
                     // starts a Paynow hosted checkout), not through a separate gateway per
                     // channel, so say that instead of naming gateways the app doesn't use.
                     // Mobile money is approved on the customer's own phone, all inside BiteDash.
-                    "EcoCash", "OneMoney" -> "You'll get a prompt on your phone to approve this payment"
-                    "InnBucks" -> "You'll get a code to approve in the InnBucks app"
-                    in viewModel.unavailableCheckoutMethods -> "Not available yet"
+                    checkoutMethod == "EcoCash" || checkoutMethod == "OneMoney" -> "You'll get a prompt on your phone to approve this payment"
+                    checkoutMethod == "InnBucks" -> "You'll get a code to approve in the InnBucks app"
+                    checkoutMethod in viewModel.unavailableCheckoutMethods -> "Not available yet"
                     else -> "You'll finish this payment on Paynow's secure payment page"
                 }
 
@@ -1343,6 +1347,49 @@ fun CartScreen(viewModel: BiteDashViewModel) {
                             )
                         )
 
+                        if (isManualWallet) {
+                            val receivingNumber = businessPaymentNumbers[checkoutMethod]
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .background(MaterialTheme.colorScheme.primaryContainer, RoundedCornerShape(8.dp))
+                                    .padding(12.dp),
+                                verticalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Text(
+                                    "Step 1: Send $checkoutMethod payment to",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onPrimaryContainer
+                                )
+                                Text(
+                                    receivingNumber?.ifBlank { null } ?: "Ask the restaurant for a $checkoutMethod number",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                    modifier = Modifier.testTag("manual_payment_number")
+                                )
+                            }
+                            OutlinedTextField(
+                                value = manualPaymentReference,
+                                onValueChange = { viewModel.setManualPaymentReference(it) },
+                                label = { Text("Step 2: $checkoutMethod confirmation / reference") },
+                                placeholder = { Text("e.g. the confirmation code from your SMS") },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .testTag("manual_payment_reference_input"),
+                                singleLine = true,
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedBorderColor = inputColor,
+                                    focusedLabelColor = inputColor
+                                )
+                            )
+                            Text(
+                                "We'll confirm the payment arrived and start your order shortly after.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = Color.Gray
+                            )
+                        }
+
                         val methodUnavailable = checkoutMethod in viewModel.unavailableCheckoutMethods
                         if (methodUnavailable) {
                             Text(
@@ -1364,7 +1411,15 @@ fun CartScreen(viewModel: BiteDashViewModel) {
                                 containerColor = inputColor
                             )
                         ) {
-                            Text(if (checkoutMethod == "USD Cash") "Place Cash Order & Track 🛵" else "Secure Pay & Track Order 🛵", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                            Text(
+                                when {
+                                    checkoutMethod == "USD Cash" -> "Place Cash Order & Track 🛵"
+                                    isManualWallet -> "Submit Order & Track 🛵"
+                                    else -> "Secure Pay & Track Order 🛵"
+                                },
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 16.sp
+                            )
                         }
                     }
                 }
@@ -1507,10 +1562,21 @@ fun CartScreen(viewModel: BiteDashViewModel) {
                             Text("Waiting for payment confirmation...", style = MaterialTheme.typography.bodySmall, color = Color.Gray)
                         }
                         is PaymentStep.Success -> {
-                            Icon(Icons.Default.CheckCircle, contentDescription = "Success", tint = EcoCashGreen, modifier = Modifier.size(64.dp))
-                            Text("Payment Confirmed!", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium, color = EcoCashGreen)
-                            Text("Mobile Money cleared successfully. Your delivery has been routed to the restaurant kitchen.", textAlign = TextAlign.Center)
-                            Text("Tx Ref: ${currentStep.transactionRef}", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelMedium)
+                            if (currentStep.awaitingConfirmation) {
+                                // Manual mobile money: the customer's own transfer, not yet
+                                // checked by an admin — this must not claim to be confirmed.
+                                Icon(Icons.Default.CheckCircle, contentDescription = "Order placed", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(64.dp))
+                                Text("Order Placed!", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
+                                Text(
+                                    "We're checking that your payment arrived — this usually takes a little while. The restaurant will start on your order once it's confirmed.",
+                                    textAlign = TextAlign.Center
+                                )
+                            } else {
+                                Icon(Icons.Default.CheckCircle, contentDescription = "Success", tint = EcoCashGreen, modifier = Modifier.size(64.dp))
+                                Text("Payment Confirmed!", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium, color = EcoCashGreen)
+                                Text("Mobile Money cleared successfully. Your delivery has been routed to the restaurant kitchen.", textAlign = TextAlign.Center)
+                            }
+                            Text("Order Ref: ${currentStep.transactionRef}", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelMedium)
                             Button(
                                 onClick = { viewModel.resetPaymentState() },
                                 colors = ButtonDefaults.buttonColors(containerColor = EcoCashGreen)
@@ -2212,6 +2278,12 @@ fun AdminPortalOverlay(
                         text = { Text("Users", fontSize = 13.sp) },
                         modifier = Modifier.testTag("admin_tab_users")
                     )
+                    Tab(
+                        selected = activeSubTab == 7,
+                        onClick = { activeSubTab = 7 },
+                        text = { Text("Manual Pay", fontSize = 13.sp) },
+                        modifier = Modifier.testTag("admin_tab_manual_pay")
+                    )
                 }
 
                 Spacer(modifier = Modifier.height(12.dp))
@@ -2739,6 +2811,11 @@ fun AdminPortalOverlay(
                         6 -> {
                             // Look an account up by email and change its role
                             UserRoleManagementTab(authViewModel = authViewModel)
+                        }
+                        7 -> {
+                            // Manual mobile-money: confirm customer transfers, set the
+                            // business's receiving numbers
+                            ManualPaymentsTab(viewModel = viewModel)
                         }
                     }
                 }
@@ -5133,6 +5210,130 @@ private fun AdminOrdersTab(viewModel: BiteDashViewModel) {
                     )
                 }
             }
+        }
+    }
+}
+
+/**
+ * Manual mobile-money: while Paynow isn't live (see BiteDashViewModel.PAYNOW_LIVE), a
+ * customer sends EcoCash/OneMoney/InnBucks/Telecash/O'Mari payment straight to the
+ * business's own number and reports the reference at checkout. Here an admin checks
+ * that transfer actually landed before the restaurant ever sees the order, and sets
+ * which number customers are shown for each wallet.
+ */
+@Composable
+private fun ManualPaymentsTab(viewModel: BiteDashViewModel) {
+    val pending by viewModel.manualPaymentsAwaitingConfirmation.collectAsStateWithLifecycle()
+    val businessNumbers by viewModel.businessPaymentNumbers.collectAsStateWithLifecycle()
+    val wallets = listOf("EcoCash", "OneMoney", "InnBucks", "Telecash", "O'Mari")
+    var numberDrafts by remember(businessNumbers) {
+        mutableStateOf(wallets.associateWith { businessNumbers[it].orEmpty() })
+    }
+    var numbersSaved by remember { mutableStateOf(false) }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(vertical = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text("Pending manual payments", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium)
+            Text(
+                "Check that the customer's transfer actually arrived on the number below before confirming — " +
+                    "the restaurant only sees the order once you do.",
+                fontSize = 11.sp,
+                color = Color.Gray
+            )
+        }
+
+        if (pending.isEmpty()) {
+            Box(modifier = Modifier.fillMaxWidth().padding(vertical = 16.dp), contentAlignment = Alignment.Center) {
+                Text("No manual payments waiting on confirmation.", color = Color.Gray, fontSize = 13.sp)
+            }
+        } else {
+            pending.forEach { order ->
+                var showReject by remember(order.id) { mutableStateOf(false) }
+                Card(
+                    modifier = Modifier.fillMaxWidth().testTag("manual_payment_order_${order.id}"),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+                ) {
+                    Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Row(horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
+                            Text(order.restaurantName.ifBlank { "Unknown restaurant" }, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                            Text("$${String.format(Locale.US, "%.2f", order.totalCost)}", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                        }
+                        Text(order.customerName.ifBlank { "Unknown customer" } + " · " + order.customerPhone, fontSize = 12.sp, color = Color.Gray)
+                        Badge(containerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f), contentColor = MaterialTheme.colorScheme.primary) {
+                            Text(order.paymentMethod, modifier = Modifier.padding(horizontal = 6.dp, vertical = 1.dp), fontSize = 9.sp)
+                        }
+                        Text(
+                            "Customer's reference: ${order.customerPaymentReference.ifBlank { "(none entered)" }}",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                            OutlinedButton(
+                                onClick = { showReject = true },
+                                modifier = Modifier.weight(1f).testTag("reject_manual_payment_${order.id}")
+                            ) {
+                                Text("Not Received", color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
+                            }
+                            Button(
+                                onClick = { viewModel.confirmManualPayment(order.id) },
+                                modifier = Modifier.weight(1f).testTag("confirm_manual_payment_${order.id}")
+                            ) {
+                                Text("Confirm Received", fontSize = 12.sp)
+                            }
+                        }
+                    }
+                }
+                if (showReject) {
+                    AlertDialog(
+                        onDismissRequest = { showReject = false },
+                        title = { Text("No payment received?") },
+                        text = { Text("This cancels the order from \"${order.restaurantName}\". Only do this once you've checked the number and found no matching transfer.", fontSize = 13.sp) },
+                        confirmButton = {
+                            TextButton(onClick = { viewModel.rejectManualPayment(order.id); showReject = false }) {
+                                Text("Cancel Order", color = MaterialTheme.colorScheme.error)
+                            }
+                        },
+                        dismissButton = { TextButton(onClick = { showReject = false }) { Text("Never Mind") } }
+                    )
+                }
+            }
+        }
+
+        Divider()
+
+        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text("Receiving numbers", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium)
+            Text(
+                "Shown to customers at checkout so they know where to send a manual payment.",
+                fontSize = 11.sp,
+                color = Color.Gray
+            )
+        }
+        wallets.forEach { wallet ->
+            OutlinedTextField(
+                value = numberDrafts[wallet].orEmpty(),
+                onValueChange = { numberDrafts = numberDrafts + (wallet to it); numbersSaved = false },
+                label = { Text("$wallet number") },
+                placeholder = { Text("e.g. 0771234567") },
+                modifier = Modifier.fillMaxWidth().testTag("manual_number_input_$wallet"),
+                singleLine = true
+            )
+        }
+        Button(
+            onClick = {
+                viewModel.updateBusinessPaymentNumbers(numberDrafts)
+                numbersSaved = true
+            },
+            modifier = Modifier.fillMaxWidth().testTag("save_manual_numbers")
+        ) {
+            Text(if (numbersSaved) "Saved ✓" else "Save Receiving Numbers")
         }
     }
 }

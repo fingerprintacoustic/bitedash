@@ -161,7 +161,10 @@ data class FirestoreOrder(
     // Payment
     val paymentMethod: String = "", // ECO_CASH, ONE_MONEY, INNBUCKS, CASH_ON_DELIVERY
     val paymentRef: String = "",
-    val paymentStatus: String = "PENDING", // PENDING, PROCESSING, COMPLETED, FAILED
+    val paymentStatus: String = "PENDING", // PENDING, PROCESSING, COMPLETED, FAILED, AWAITING_MANUAL_CONFIRMATION
+    // Manual mobile-money: what the customer typed as proof they sent the money
+    // (e.g. an EcoCash confirmation code), pending an admin checking it arrived.
+    val customerPaymentReference: String = "",
     // Payout tracking
     @get:PropertyName("isSettled") @set:PropertyName("isSettled")
     var isSettled: Boolean = false,
