@@ -83,16 +83,20 @@ and number typed in the app are not sent to Paynow; the customer picks how to pa
 - "Start Preparing" button label wraps onto two lines.
 - Rejected/cancelled orders silently drop out of the customer's Tracking tab (History shows the raw status).
 
-## Test data still in the production Firebase project (must be deleted BEFORE publishing)
+## Test data: cleaned up (2026-09-22)
 
-Cleanup was started and one test order deleted; the rest is still there. Remaining Firestore documents:
+All `bd-test-*` test data has been removed from the production Firebase project:
+- All 5 test accounts (`bd-test-customer/-restaurant/-driver/-driver2/-admin@example.com`) deleted from both
+  Firestore (`users/`) and Firebase Authentication — verified none of them can sign in anymore. The admin account
+  in particular no longer exists at all, not just demoted.
+- `BD Test Kitchen` hidden (`isActive: false`, same mechanism as the existing "Delete Restaurant" admin action) —
+  verified an unauthenticated read of its document is now refused (403), same as it would be for any other hidden
+  restaurant. Its 2 `menu_items` deleted.
+- Both test `drivers/` documents, all 16 test `orders/`, and 3 `payments/` records deleted.
+- `public_settings/payment` (the manual-payment receiving numbers) is empty — nothing pre-filled; an admin must
+  enter real numbers before manual mobile-money payments are actually usable by customers.
 
-- `users/` for the five test accounts: `bd-test-customer@example.com`, `bd-test-restaurant@example.com`,
-  `bd-test-driver@example.com`, `bd-test-driver2@example.com`, `bd-test-admin@example.com`
-  (**the admin account has the admin role and a known password; deleting its `users/` document removes the role**).
-- `drivers/` for the two test drivers, restaurant `BD Test Kitchen` (approved, visible to real customers) and its
-  two `menu_items`, and five orders placed by the test customer.
-- The five accounts also still exist in Firebase Authentication (they can only be deleted in the console).
+No remaining `bd-test-*` accounts or data. `feature/pesepay` branch (see below) is unaffected — it has no commits.
 
 ## App features
 
