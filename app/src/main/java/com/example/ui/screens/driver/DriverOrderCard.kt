@@ -18,6 +18,7 @@ import androidx.compose.material.icons.filled.LocalPhone
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Map
 import androidx.compose.material.icons.filled.Restaurant
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -99,6 +100,15 @@ fun DriverOrderCard(
                     )
                 }
                 DriverDeliveryStatus.ASSIGNED -> {
+                    // Cash on Delivery: nothing has been paid yet, so the restaurant is
+                    // handing over food with no guarantee they'll ever see that money —
+                    // the driver pays the restaurant themselves at pickup (in person, not
+                    // tracked by the app), then recovers it from the customer's cash at
+                    // drop-off (see the "Collect cash on delivery" line above).
+                    if (order.paymentMethod == "CASH_ON_DELIVERY") {
+                        PayRestaurantReminder(order = order)
+                        Spacer(modifier = Modifier.height(12.dp))
+                    }
                     PickupButton(
                         isLoading = isLoading,
                         onPickup = onPickupOrder
@@ -471,6 +481,48 @@ private fun AcceptDeliveryButton(
             modifier = Modifier.fillMaxWidth()
         ) {
             Text("Accept Delivery")
+        }
+    }
+}
+
+/**
+ * Cash on Delivery: reminds the driver to pay the restaurant the food cost themselves,
+ * in person, before picking up — otherwise the restaurant is handing over food with no
+ * guarantee of ever being paid. This is a process reminder only; the app tracks no money
+ * for it (same as the rest of Cash on Delivery), it's on the driver and restaurant to
+ * settle it between themselves.
+ */
+@Composable
+private fun PayRestaurantReminder(order: DriverDeliveryOrder) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer),
+        shape = RoundedCornerShape(8.dp)
+    ) {
+        Row(
+            modifier = Modifier.padding(12.dp),
+            verticalAlignment = Alignment.Top
+        ) {
+            Icon(
+                imageVector = Icons.Default.Warning,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onErrorContainer,
+                modifier = Modifier.size(20.dp)
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            Column {
+                Text(
+                    text = "Pay the restaurant $${String.format("%.2f", order.subtotal)} in cash before pickup",
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onErrorContainer
+                )
+                Text(
+                    text = "You'll collect it back (plus your fee) from the customer at drop-off.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onErrorContainer
+                )
+            }
         }
     }
 }
