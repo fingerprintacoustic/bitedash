@@ -103,7 +103,7 @@ private fun stepsFor(role: GuideRole): List<GuideStep> = when (role) {
         ),
         GuideStep(
             "Handle orders",
-            "Order Management shows incoming orders. Accept or Reject a new one, tap Start Preparing, then " +
+            "Order Management shows incoming orders. Accept or Reject a new one, tap Prepare, then " +
                 "Mark Ready for Pickup so a rider can claim it. The header shows how many still need your action."
         ),
         GuideStep(

@@ -528,7 +528,10 @@ private fun PreparingActionButtons(
                     modifier = Modifier.size(18.dp)
                 )
                 Spacer(modifier = Modifier.width(4.dp))
-                Text("Start Preparing")
+                // Shorter than "Start Preparing": with the icon, this button only
+                // gets half the row's width (next to Cancel), and the longer label
+                // wrapped onto two lines at larger system font sizes.
+                Text("Prepare", maxLines = 1)
             }
         }
     }

@@ -1609,6 +1609,7 @@ fun ActiveTrackingScreen(viewModel: BiteDashViewModel) {
     val activeOrder by viewModel.activeOrder.collectAsStateWithLifecycle()
     val trackingProgress by viewModel.trackingProgress.collectAsStateWithLifecycle()
     val trackingStatusText by viewModel.trackingStatusText.collectAsStateWithLifecycle()
+    val resolvedOrderNotice by viewModel.resolvedOrderNotice.collectAsStateWithLifecycle()
 
     if (activeOrder == null) {
         Box(
@@ -1621,25 +1622,57 @@ fun ActiveTrackingScreen(viewModel: BiteDashViewModel) {
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-                Icon(
-                    imageVector = Icons.Default.LocationOn,
-                    contentDescription = "No active tracker",
-                    tint = Color.Gray,
-                    modifier = Modifier.size(80.dp)
-                )
-                Text(
-                    text = "No active deliveries",
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.Bold
-                )
-                Text(
-                    text = "Once you place a restaurant food order using EcoCash, InnBucks, OneMoney, O'Mari, or Bank Cards, you can view the live GPS route simulator and rider path here!",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = Color.Gray,
-                    textAlign = TextAlign.Center
-                )
-                Button(onClick = { viewModel.selectTab(0) }) {
-                    Text("Order Food First")
+                val notice = resolvedOrderNotice
+                if (notice != null) {
+                    // The order the customer was just tracking was rejected/cancelled —
+                    // say so here instead of silently falling back to the generic empty
+                    // state below, which looked identical to "never ordered anything."
+                    Icon(
+                        imageVector = Icons.Default.Cancel,
+                        contentDescription = "Order not fulfilled",
+                        tint = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.size(80.dp)
+                    )
+                    Text(
+                        text = if (notice.status == "REJECTED") "Order Rejected" else "Order Cancelled",
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.error
+                    )
+                    Text(
+                        text = "${notice.restaurantName} ${if (notice.status == "REJECTED") "rejected" else "cancelled"} your order. " +
+                            "Check History for details, or try another restaurant.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = Color.Gray,
+                        textAlign = TextAlign.Center
+                    )
+                    Button(onClick = {
+                        viewModel.dismissResolvedOrderNotice()
+                        viewModel.selectTab(0)
+                    }) {
+                        Text("Order Food Again")
+                    }
+                } else {
+                    Icon(
+                        imageVector = Icons.Default.LocationOn,
+                        contentDescription = "No active tracker",
+                        tint = Color.Gray,
+                        modifier = Modifier.size(80.dp)
+                    )
+                    Text(
+                        text = "No active deliveries",
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        text = "Once you place a restaurant food order using EcoCash, InnBucks, OneMoney, O'Mari, or Bank Cards, you can view the live GPS route simulator and rider path here!",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = Color.Gray,
+                        textAlign = TextAlign.Center
+                    )
+                    Button(onClick = { viewModel.selectTab(0) }) {
+                        Text("Order Food First")
+                    }
                 }
             }
         }
@@ -3276,7 +3309,11 @@ fun EditMenuDialog(
             restaurant.menuItems
         }
         localItems.clear()
-        localItems.addAll(items)
+        // Same ordering the synced (customer-facing) list already uses — the
+        // Firestore query itself has no orderBy, so without this the editor's
+        // order depends on Firestore's unspecified default order, which can
+        // shift between saves and never matched what customers actually see.
+        localItems.addAll(items.sortedWith(compareBy({ it.category }, { it.name })))
         isLoadingMenu = false
     }
 
@@ -4680,7 +4717,9 @@ fun RestaurantOwnerDashboard(
                                                         onClick = { restaurantViewModel.startPreparing(order.orderId) },
                                                         colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
                                                     ) {
-                                                        Text("Start Preparing")
+                                                        // Matches the shorter label used in Order Management's
+                                                        // equivalent button (RestaurantOrderCard) — same action.
+                                                        Text("Prepare", maxLines = 1)
                                                     }
                                                 }
                                                 com.example.ui.viewmodel.restaurant.RestaurantOrderStatus.PREPARING -> {
@@ -5584,7 +5623,14 @@ private fun UserRoleManagementTab(authViewModel: AuthViewModel?) {
                         onClick = {
                             val newRole = selectedRole
                             if (newRole != null) {
-                                authViewModel?.updateUserRole(user.id, newRole)
+                                // Without this, "Current role" and the enabled check above
+                                // (selectedRole?.value != user.role) kept comparing against
+                                // the role from the original lookup, so the line never
+                                // visibly updated and re-selecting the same new role again
+                                // stayed disabled.
+                                authViewModel?.updateUserRole(user.id, newRole) {
+                                    foundUser = user.copy(role = newRole.value)
+                                }
                             }
                         },
                         enabled = !isApplying && selectedRole != null && selectedRole?.value != user.role,
