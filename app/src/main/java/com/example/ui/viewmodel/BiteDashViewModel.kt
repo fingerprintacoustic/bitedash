@@ -145,6 +145,19 @@ class BiteDashViewModel(application: Application) : AndroidViewModel(application
     private val _activeOrder = MutableStateFlow<OrderEntity?>(null)
     val activeOrder: StateFlow<OrderEntity?> = _activeOrder.asStateFlow()
 
+    // The order that was just active and dropped out of getActiveOrders()
+    // because the restaurant rejected/cancelled it (REJECTED/CANCELLED are
+    // excluded from that query on purpose, same as COMPLETED). Without this,
+    // the Tracking tab just silently reverted to its generic "No active
+    // deliveries" empty state with no indication the order was ever rejected.
+    data class ResolvedOrderNotice(val restaurantName: String, val status: String)
+    private val _resolvedOrderNotice = MutableStateFlow<ResolvedOrderNotice?>(null)
+    val resolvedOrderNotice: StateFlow<ResolvedOrderNotice?> = _resolvedOrderNotice.asStateFlow()
+
+    fun dismissResolvedOrderNotice() {
+        _resolvedOrderNotice.value = null
+    }
+
     private val _trackingProgress = MutableStateFlow(0f)
     val trackingProgress: StateFlow<Float> = _trackingProgress.asStateFlow()
 
@@ -625,16 +638,35 @@ viewModelScope.launch {
     init {
         // Collect dbActiveOrders and resume tracking if there's any active item
         viewModelScope.launch {
+            var previousActiveOrderId: Int? = null
             dbActiveOrders.collect { activeList ->
                 if (activeList.isNotEmpty()) {
                     val currentTrack = activeList.first()
+                    previousActiveOrderId = currentTrack.id
                     _activeOrder.value = currentTrack
+                    // Clear any notice from a previous order — otherwise it could
+                    // resurface later for this new, unrelated order.
+                    _resolvedOrderNotice.value = null
                     if (_isManualMode.value) {
                         updateTrackingStateManual(currentTrack.status)
                     } else if (trackingJob == null || !trackingJob!!.isActive) {
                         resumeTracking(currentTrack)
                     }
                 } else {
+                    // If an order was active a moment ago and just disappeared from this
+                    // query, find out whether it's really done (COMPLETED) or the
+                    // restaurant rejected/cancelled it, so the Tracking tab can say so
+                    // instead of just reverting to its generic empty state.
+                    val lastId = previousActiveOrderId
+                    if (lastId != null) {
+                        // Direct DB read rather than relying on another, separately-
+                        // collected Flow being up to date yet for this exact write.
+                        val resolved = repository.getOrderById(lastId)
+                        if (resolved != null && (resolved.status == "REJECTED" || resolved.status == "CANCELLED")) {
+                            _resolvedOrderNotice.value = ResolvedOrderNotice(resolved.restaurantName, resolved.status)
+                        }
+                    }
+                    previousActiveOrderId = null
                     _activeOrder.value = null
                 }
             }
