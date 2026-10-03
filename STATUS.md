@@ -37,8 +37,8 @@ Phone login was broken for every user before this. Four things were fixed:
   never got a `users/` document (and fell back to Customer after a restart). Now writes `users/{uid}`.
 - `AuthViewModel`: the phone sign-up now waits for that profile write before routing on the role.
 
-The code fixes are in 6.22 and above. 6.21 and older builds still have the broken flow, so users need 6.22 from
-the production track. **No phone test numbers are configured anymore** (Sign-in method → Phone): the test number
+The code fixes are in 6.22 and above. 6.21 and older builds still have the broken flow, so closed testers need
+6.22 promoted to the closed testing track (see **Release**). **No phone test numbers are configured anymore** (Sign-in method → Phone): the test number
 above was removed after the release test passed. `+263 77 123 4567`, `+263 77 222 2222` and `+263 77 333 3333`
 (all with code 123456, which anyone could use to sign in) were removed earlier the same day.
 
@@ -144,7 +144,18 @@ The latest release build is 6.22 (versionCode 28), made 2026-10-03 from `main` a
 merge, with the phone login fixes; Actions run 37151661448, artifact `BiteDash-release-aab`). It is copied to
 `C:\Users\finge\Downloads\BiteDash-6.22-code28-release.aab`, which replaces the older 6.20/6.21 builds and is the one
 to upload. It is signed with the release certificate (CN=Fingerprint Acoustic), not the debug key. Uploading to Play
-is done in the Play Console. It is on Play internal testing, where phone login was verified; it still has to be promoted to production.
+is done in the Play Console.
+
+### Google Play tracks (as of 2026-10-03)
+
+- **No production release yet.** The app is in **closed testing**. As a new personal developer account, it needs
+  at least **12 testers opted in to the closed test for 14 days in a row** before production access can be
+  requested. There are fewer than 12 testers so far.
+- **Internal testing:** 6.22 (versionCode 28). Phone login was verified on this build, installed from Play.
+- **Closed testing:** had 6.21 when last checked, which still has the broken phone login. **To do:** promote 6.22
+  from internal testing to closed testing (Testing → Internal testing → 6.22 release → Promote release → Closed
+  testing).
+- Once production access is granted, promote the newest tested build to production.
 
 ## Branches
 
