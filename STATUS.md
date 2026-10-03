@@ -17,14 +17,16 @@ driver and restaurant approval, and the full Cash on Delivery lifecycle (place, 
 accepts/picks up/delivers, customer sees live status). Checkout now goes through `placeOrder`.
 Live rules were checked over REST as customer, driver, owner and signed-out user.
 
-## Phone/SMS (OTP) login: test passed (2026-10-03), needs a release to reach users
+## Phone/SMS (OTP) login: verified on the 6.22 release build (2026-10-03)
 
-Tested on a device (debug build) with the Firebase test number `+263 77 000 3434` (fixed code; no real SMS sent),
-signing up as Delivery Driver: code requested, code entered, Auth user created, `users/{uid}` created with
-`role: "driver"`, the phone number and display name, and the app opened on the Rider tab's "Set Up Your Rider
-Profile". The Rider tab still came up after the app was force-stopped and reopened, so the role was saved.
-**Test account removed straight after:** the `users/` document and the Auth user were both deleted (verified that
-neither exists anymore); no `drivers/` document was ever created for it.
+Tested twice with the Firebase test number `+263 77 000 3434` (fixed code; no real SMS sent), signing up as
+Delivery Driver. First run: debug build. Second run: the release build **6.22 (versionCode 28) installed from Play
+internal testing**. Both runs: code requested, code-entry screen shown, code entered, Auth user created,
+`users/{uid}` created with `role: "driver"`, the phone number and display name, and the app opened on the Rider
+tab's "Set Up Your Rider Profile". The Rider tab still came up after the app was force-stopped and reopened, so the
+role was saved.
+**Test accounts removed straight after each run:** the `users/` document and the Auth user were both deleted
+(verified that neither exists anymore); no `drivers/` document was created for either.
 
 Phone login was broken for every user before this. Four things were fixed:
 - Firebase console, Authentication → Settings → SMS region policy: was "Allow" with **no regions**, so no SMS could
@@ -35,11 +37,11 @@ Phone login was broken for every user before this. Four things were fixed:
   never got a `users/` document (and fell back to Customer after a restart). Now writes `users/{uid}`.
 - `AuthViewModel`: the phone sign-up now waits for that profile write before routing on the role.
 
-The three code fixes are **not in 6.21** (the build on Play), so phone login stays broken for users until a new
-release ships. The test number used here, `+263 77 000 3434` (code 246810), is configured under Sign-in method →
-Phone, and is now the only test number. `+263 77 123 4567`, `+263 77 222 2222` and `+263 77 333 3333` (all with
-code 123456, which anyone could use to sign in) were removed from that list on 2026-10-03. The Android app has no SHA certificate
-fingerprints registered in Firebase. Phone auth currently works through Play Integrity; adding the Play App Signing
+The code fixes are in 6.22 and above. 6.21 and older builds still have the broken flow, so users need 6.22 from
+the production track. **No phone test numbers are configured anymore** (Sign-in method → Phone): the test number
+above was removed after the release test passed. `+263 77 123 4567`, `+263 77 222 2222` and `+263 77 333 3333`
+(all with code 123456, which anyone could use to sign in) were removed earlier the same day. The Android app has no
+SHA certificate fingerprints registered in Firebase. Phone auth currently works through Play Integrity; adding the Play App Signing
 SHA-1 is a recommended backstop.
 
 ## Manual mobile-money payments (works right now, independent of Paynow)
@@ -94,7 +96,7 @@ and number typed in the app are not sent to Paynow; the customer picks how to pa
 ## Not verified
 
 - A completed Paynow payment (EcoCash / OneMoney / InnBucks / card) and its webhook.
-- A release-signed build (only debug builds were tested).
+- The rest of the app on a release-signed build (only phone login has been tested on one, 6.22).
 - Simulation mode (non-manual checkout) does not sync real order status.
 
 ## Known open items
@@ -132,11 +134,12 @@ No remaining `bd-test-*` accounts or data. `feature/pesepay` branch (see below) 
 The signed AAB is built by `.github/workflows/build-release-aab.yml` (manual run or a `release-*` tag) from the
 repository secrets `KEYSTORE_BASE64`, `STORE_PASSWORD`, `KEY_PASSWORD`, `PAYNOW_INTEGRATION_ID`,
 `PAYNOW_INTEGRATION_KEY`. `app/build.gradle.kts` is at `versionCode = 28` / `versionName = "6.22"`; the version code
-must be higher than the highest one already uploaded to Google Play (raise it if Play already has 26 or more).
-A release build of 6.20 was made from `main` at commit `e9efa0a` (Actions run 35708691912, artifact
-`BiteDash-release-aab`), copied to `C:\Users\finge\Downloads\BiteDash-6.20-code26-release.aab` (this replaces any
-earlier copy — always the one to upload). It is signed with the
-release certificate (CN=Fingerprint Acoustic), not the debug key. Uploading to Play is done in the Play Console.
+must be higher than the highest one already uploaded to Google Play (raise it if Play already has 28 or more).
+The latest release build is 6.22 (versionCode 28), made 2026-10-03 from `main` at commit `cd92a1f` (the PR #12
+merge, with the phone login fixes; Actions run 37151661448, artifact `BiteDash-release-aab`). It is copied to
+`C:\Users\finge\Downloads\BiteDash-6.22-code28-release.aab`, which replaces the older 6.20/6.21 builds and is the one
+to upload. It is signed with the release certificate (CN=Fingerprint Acoustic), not the debug key. Uploading to Play
+is done in the Play Console. It is on Play internal testing, where phone login was verified; it still has to be promoted to production.
 
 ## Branches
 
