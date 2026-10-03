@@ -37,8 +37,8 @@ Phone login was broken for every user before this. Four things were fixed:
   never got a `users/` document (and fell back to Customer after a restart). Now writes `users/{uid}`.
 - `AuthViewModel`: the phone sign-up now waits for that profile write before routing on the role.
 
-The code fixes are in 6.22 and above. 6.21 and older builds still have the broken flow, so closed testers need
-6.22 promoted to the closed testing track (see **Release**). **No phone test numbers are configured anymore** (Sign-in method → Phone): the test number
+The code fixes are in 6.22 and above, which is now on the closed testing track (see **Release**). 6.21 and older
+builds still have the broken flow, so testers who haven't updated yet can't sign in by phone. **No phone test numbers are configured anymore** (Sign-in method → Phone): the test number
 above was removed after the release test passed. `+263 77 123 4567`, `+263 77 222 2222` and `+263 77 333 3333`
 (all with code 123456, which anyone could use to sign in) were removed earlier the same day.
 
@@ -152,9 +152,8 @@ is done in the Play Console.
   at least **12 testers opted in to the closed test for 14 days in a row** before production access can be
   requested. There are fewer than 12 testers so far.
 - **Internal testing:** 6.22 (versionCode 28). Phone login was verified on this build, installed from Play.
-- **Closed testing:** had 6.21 when last checked, which still has the broken phone login. **To do:** promote 6.22
-  from internal testing to closed testing (Testing → Internal testing → 6.22 release → Promote release → Closed
-  testing).
+- **Closed testing:** 6.22 (versionCode 28), promoted from internal testing on 2026-10-03, replacing 6.21. Play
+  updates testers automatically, or they can tap Update on the BiteDash page in the Play Store.
 - Once production access is granted, promote the newest tested build to production.
 
 ## Branches
