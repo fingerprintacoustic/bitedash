@@ -12,10 +12,13 @@ Last updated: 2026-10-03. Firebase project: `bitedash-1e078`. Branch: `main` (ev
 
 ## App behaviour verified on a device (debug build)
 
-Sign-up and role gating for customer / restaurant / driver / admin, Switch Role, sold-out toggle, admin role change,
+Sign-up and role gating for customer / restaurant / driver / admin, sold-out toggle, admin role change,
 driver and restaurant approval, and the full Cash on Delivery lifecycle (place, accept, prepare, ready, driver
 accepts/picks up/delivers, customer sees live status). Checkout now goes through `placeOrder`.
 Live rules were checked over REST as customer, driver, owner and signed-out user.
+
+Switch Role was previously listed here as verified; that was wrong for the case that matters (an already-approved
+Driver or Restaurant account tapping Switch Role) — see "Not verified" below.
 
 ## Phone/SMS (OTP) login: verified on the 6.22 release build (2026-10-03)
 
@@ -103,6 +106,18 @@ and number typed in the app are not sent to Paynow; the customer picks how to pa
 - A completed Paynow payment (EcoCash / OneMoney / InnBucks / card) and its webhook.
 - The rest of the app on a release-signed build (only phone login has been tested on one, 6.22).
 - Simulation mode (non-manual checkout) does not sync real order status.
+- **Switch Role on an approved Driver or Restaurant account, by actually tapping it on a device.** A real bug was
+  reported here (Switch Role flashes a spinner and bounces straight back to the same dashboard) and was fixed in
+  `BiteDashMainApp.kt`/`BiteDashViewModel.kt` via a new `UserProfile.SwitchingRole` state (distinct from `Idle`) that
+  `RoleSelectionGate` uses to skip its auto-redirect `LaunchedEffect` for the Restaurant/Rider tabs and show a manual
+  "Go to My Dashboard" button instead. Code re-audited 2026-10-03: all three Switch Role entry points (customer
+  header icon, Restaurant Dashboard, Driver Dashboard) correctly set `SwitchingRole`; both the Restaurant tab
+  (`myRestaurant != null && !cameFromSwitchRole`) and Rider tab (`myDriver?.isApproved == true && !cameFromSwitchRole`)
+  correctly gate their auto-redirect on it; Sign Out and the tab row are reachable regardless. This review found no
+  gap in the logic, but it was a code read, not a tap on a device — this remote/cloud session has no Android SDK,
+  emulator, or physical device access, so it cannot perform the tap-test itself. Needs an actual on-device check (via
+  local Claude Code, or manually) on an approved Driver account and an approved Restaurant account, confirming Switch
+  Role lands somewhere you can pick a different role or reach Sign Out, before this is marked verified.
 
 ## Known open items
 
