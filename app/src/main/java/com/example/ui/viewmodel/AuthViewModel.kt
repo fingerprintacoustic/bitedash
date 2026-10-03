@@ -308,7 +308,8 @@ class AuthViewModel(application: Application) : AndroidViewModel(application) {
 
             when (val result = authService.verifyPhoneOtp(verificationId, code)) {
                 is AuthResult.Success -> {
-                    // Create or get Firestore user
+                    // Create or get Firestore user — awaited, so the role is
+                    // loaded before the app routes on it.
                     ensureFirestoreUserForPhone(result.userId)
                     _authState.value = AuthState.Authenticated
                     onSuccess?.invoke(result.userId)
@@ -344,23 +345,21 @@ class AuthViewModel(application: Application) : AndroidViewModel(application) {
     /**
      * Ensure Firestore user document exists for phone auth users.
      */
-    private fun ensureFirestoreUserForPhone(uid: String) {
-        viewModelScope.launch {
-            var user = firestoreService.getUser(uid)
-            if (user == null) {
-                // Create new user document for phone-only auth
-                val newUser = FirestoreUser(
-                    id = uid,
-                    uid = uid,
-                    phone = _phone.value.trim(),
-                    role = _selectedRole.value.value,
-                    displayName = _displayName.value.trim().ifEmpty { "User" }
-                )
-                firestoreService.createUser(newUser)
-                _currentFirestoreUser.value = newUser
-            } else {
-                _currentFirestoreUser.value = user
-            }
+    private suspend fun ensureFirestoreUserForPhone(uid: String) {
+        val user = firestoreService.getUser(uid)
+        if (user == null) {
+            // Create new user document for phone-only auth
+            val newUser = FirestoreUser(
+                id = uid,
+                uid = uid,
+                phone = _phone.value.trim(),
+                role = _selectedRole.value.value,
+                displayName = _displayName.value.trim().ifEmpty { "User" }
+            )
+            firestoreService.createUser(newUser)
+            _currentFirestoreUser.value = newUser
+        } else {
+            _currentFirestoreUser.value = user
         }
     }
 
