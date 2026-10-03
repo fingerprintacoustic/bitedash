@@ -96,7 +96,7 @@ and number typed in the app are not sent to Paynow; the customer picks how to pa
 ## Not verified
 
 - A completed Paynow payment (EcoCash / OneMoney / InnBucks / card) and its webhook.
-- A release-signed build (only debug builds were tested).
+- The rest of the app on a release-signed build (only phone login has been tested on one, 6.22).
 - Simulation mode (non-manual checkout) does not sync real order status.
 
 ## Known open items
