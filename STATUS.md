@@ -37,9 +37,8 @@ Phone login was broken for every user before this. Four things were fixed:
 
 The three code fixes are **not in 6.21** (the build on Play), so phone login stays broken for users until a new
 release ships. The test number used here, `+263 77 000 3434` (code 246810), is configured under Sign-in method →
-Phone. That list also holds `+263 77 123 4567`, `+263 77 222 2222` and `+263 77 333 3333` (code 123456), which are
-real numbers, not test numbers. While they're on the list, those people never get a real SMS, and anyone who enters
-one of those numbers with code 123456 signs straight into that person's account. The Android app has no SHA certificate
+Phone, and is now the only test number. `+263 77 123 4567`, `+263 77 222 2222` and `+263 77 333 3333` (all with
+code 123456, which anyone could use to sign in) were removed from that list on 2026-10-03. The Android app has no SHA certificate
 fingerprints registered in Firebase. Phone auth currently works through Play Integrity; adding the Play App Signing
 SHA-1 is a recommended backstop.
 
