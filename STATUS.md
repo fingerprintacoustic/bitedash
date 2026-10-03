@@ -40,9 +40,14 @@ Phone login was broken for every user before this. Four things were fixed:
 The code fixes are in 6.22 and above. 6.21 and older builds still have the broken flow, so users need 6.22 from
 the production track. **No phone test numbers are configured anymore** (Sign-in method → Phone): the test number
 above was removed after the release test passed. `+263 77 123 4567`, `+263 77 222 2222` and `+263 77 333 3333`
-(all with code 123456, which anyone could use to sign in) were removed earlier the same day. The Android app has no
-SHA certificate fingerprints registered in Firebase. Phone auth currently works through Play Integrity; adding the Play App Signing
-SHA-1 is a recommended backstop.
+(all with code 123456, which anyone could use to sign in) were removed earlier the same day.
+
+The Firebase Android app (Project settings → Your apps) has the **Play App Signing** certificate fingerprints
+registered (added 2026-10-03, read from the 6.22 APK installed from Play): SHA-1
+`d2:77:2b:d9:34:61:ed:c4:1a:ba:a0:98:53:4c:af:ea:d7:8f:34:c3` and SHA-256
+`bc:af:40:17:67:cf:d7:b1:f4:6a:0d:5f:34:17:4e:70:8c:8f:c3:f0:b3:b9:fe:f4:43:ac:84:92:98:e4:7f:9b`. These cover
+every install from Play. Sideloaded builds (debug, or the AAB signed with the upload key) have different
+certificates that are not registered. Phone login on the debug build worked without them, through Play Integrity.
 
 ## Manual mobile-money payments (works right now, independent of Paynow)
 
