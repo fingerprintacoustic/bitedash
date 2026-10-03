@@ -15,7 +15,6 @@ import com.example.ui.theme.MyApplicationTheme
 import com.example.ui.screens.BiteDashMainApp
 import com.example.ui.screens.auth.AuthenticationGate
 import com.example.ui.screens.SplashScreen
-import com.example.ui.screens.AuthLoadingScreen
 import com.example.ui.viewmodel.AuthViewModel
 import com.example.ui.viewmodel.BiteDashViewModel
 import com.example.ui.viewmodel.AuthState
@@ -53,12 +52,12 @@ class MainActivity : ComponentActivity() {
                   modifier = Modifier.padding(innerPadding)
                 )
               }
-              is AuthState.Loading, is AuthState.OtpSent, is AuthState.OtpVerifying -> {
-                // Loading state - show auth loading screen
-                AuthLoadingScreen(message = "Please wait...")
-              }
               else -> {
-                // Show authentication gate
+                // AuthenticationGate handles Loading/OtpSent/OtpVerifying itself.
+                // Intercepting OtpSent here used to hide the OTP entry screen
+                // behind a permanent "Please wait..." spinner, and swapping the
+                // gate out during Loading reset its screen state (so a failed
+                // phone sign-in dumped the user back on the email login screen).
                 AuthenticationGate(
                   authViewModel = authViewModel,
                   onAuthenticated = { vm ->

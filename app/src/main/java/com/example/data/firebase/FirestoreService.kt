@@ -145,8 +145,11 @@ class FirestoreService {
 
     suspend fun createUser(user: FirestoreUser): String? {
         return try {
-            val docRef = db.collection(COLLECTION_USERS).add(user).await()
-            docRef.id
+            // Keyed by the Auth UID: firestore.rules only allow creating
+            // users/{request.auth.uid}. add() used a random ID, so the write
+            // was rejected and phone sign-ups never got a profile document.
+            db.collection(COLLECTION_USERS).document(user.id).set(user).await()
+            user.id
         } catch (e: Exception) {
             null
         }
