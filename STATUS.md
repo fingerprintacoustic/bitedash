@@ -39,7 +39,7 @@ doc were deleted, and none of them exist anymore. No menu items or orders were c
 
 Side note: on 6.22, a rider waiting on the "Registration Submitted / awaiting admin approval" screen is not moved on
 when an admin approves them. The dashboard only appears after the app is reopened. The cause was that the Rider tab
-read `drivers/{uid}` once instead of listening to it. **Fixed in 6.23 (built, not yet on Play):** the tab now
+read `drivers/{uid}` once instead of listening to it. **Fixed in 6.23 (built, not uploaded to Play yet):** the tab now
 uses `FirestoreService.getDriverFlow()`. Verified on a debug build (2026-10-03): a temporary driver was approved in
 Firestore while that screen was open, and within 3 s it moved on to the rider guide and then the Driver Dashboard,
 with no restart. Switch Role still stayed on the role screen afterwards. The temporary account was deleted (Auth
@@ -174,8 +174,9 @@ must be higher than the highest one already uploaded to Google Play (raise it if
 The latest release build is **6.23 (versionCode 29)**, made 2026-10-03 from `main` at commit `739fa87` (the PR #21
 merge; Actions run 37168645007, artifact `BiteDash-release-aab`). It adds the live rider-approval fix (PR #20) on top
 of 6.22. It is copied to `C:\Users\finge\Downloads\BiteDash-6.23-code29-release.aab`, which is the one to upload, and
-is signed with the same upload certificate as 6.22 (CN=Fingerprint Acoustic), not the debug key. It was uploaded
-**straight to closed testing** on 2026-10-03 (see the tracks below). Uploading is done by hand in the Play Console:
+is signed with the same upload certificate as 6.22 (CN=Fingerprint Acoustic), not the debug key. **Not uploaded to
+Play yet.** The Play Console's bundle list (checked 2026-10-03) has no versionCode 29; the newest is 28 (6.22). The plan
+is to upload it straight to closed testing, skipping internal testing. Uploading is done by hand in the Play Console:
 the AAB is too large for browser automation, and there is no Play publishing API set up. The previous build, 6.22
 (versionCode 28, commit `cd92a1f`, run 37151661448), is still in Downloads.
 
@@ -184,12 +185,12 @@ the AAB is too large for browser automation, and there is no Play publishing API
 - **No production release yet.** The app is in **closed testing**. As a new personal developer account, it needs
   at least **12 testers opted in to the closed test for 14 days in a row** before production access can be
   requested. There are fewer than 12 testers so far.
-- **Internal testing:** still 6.22 (versionCode 28). 6.23 was not put on internal testing. Phone login was verified
-  on 6.22, installed from Play.
-- **Closed testing:** 6.23 (versionCode 29), uploaded directly to closed testing on 2026-10-03, replacing 6.22
-  (which had been promoted from internal testing earlier the same day). It may still be in Play review before
-  testers get it. Play updates testers automatically, or they can tap Update on the BiteDash page in the Play Store.
-  6.23 has not been installed from Play and checked on a device yet.
+- **Internal testing:** 6.22 (versionCode 28) was tested from here, and phone login was verified on it, installed from
+  Play. The Play Console's "Latest releases" overview (checked 2026-10-03) lists internal testing as release
+  `0.0.0.4` (versionCode 4, Jun 24, 2026), so 6.22 may no longer be the release shown on that track.
+- **Closed testing ("Bitedash tester" track):** 6.22 (versionCode 28), "Available to testers on Google Play", full
+  rollout. It was promoted from internal testing on 2026-10-03, replacing 6.21. Play updates testers automatically,
+  or they can tap Update on the BiteDash page in the Play Store. **6.23 is not on this track yet** (see above).
 - Once production access is granted, promote the newest tested build to production.
 
 ## Branches
