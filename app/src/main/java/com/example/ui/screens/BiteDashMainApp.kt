@@ -4090,11 +4090,18 @@ fun RoleSelectionGate(
                     var myDriverChecked by remember { mutableStateOf(false) }
                     var myDriver by remember { mutableStateOf<com.example.data.firebase.FirestoreDriver?>(null) }
 
+                    // Listens rather than reading once, so a pending rider sitting on
+                    // "Registration Submitted" moves on as soon as an admin approves
+                    // them, instead of only after the app is reopened.
                     LaunchedEffect(currentUid) {
-                        if (!currentUid.isNullOrBlank()) {
-                            myDriver = com.example.data.firebase.FirestoreService().getDriver(currentUid)
+                        if (currentUid.isNullOrBlank()) {
+                            myDriverChecked = true
+                        } else {
+                            com.example.data.firebase.FirestoreService().getDriverFlow(currentUid).collect {
+                                myDriver = it
+                                myDriverChecked = true
+                            }
                         }
-                        myDriverChecked = true
                     }
 
                     when {
