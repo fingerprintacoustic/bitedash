@@ -1433,7 +1433,13 @@ fun CartScreen(viewModel: BiteDashViewModel) {
 
     // Payment Processing Simulation Modal
     if (paymentStep != PaymentStep.Idle) {
-        Dialog(onDismissRequest = { if (paymentStep is PaymentStep.Success || paymentStep is PaymentStep.Error) viewModel.resetPaymentState() }) {
+        Dialog(onDismissRequest = {
+            when (paymentStep) {
+                is PaymentStep.Success -> viewModel.finishCheckout()
+                is PaymentStep.Error -> viewModel.resetPaymentState()
+                else -> {}
+            }
+        }) {
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -1571,14 +1577,23 @@ fun CartScreen(viewModel: BiteDashViewModel) {
                                     "We're checking that your payment arrived — this usually takes a little while. The restaurant will start on your order once it's confirmed.",
                                     textAlign = TextAlign.Center
                                 )
+                            } else if (currentStep.cashOnDelivery) {
+                                // Cash on Delivery: nothing has been paid yet, so don't claim it was.
+                                Icon(Icons.Default.CheckCircle, contentDescription = "Order placed", tint = EcoCashGreen, modifier = Modifier.size(64.dp))
+                                Text("Order Placed!", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium, color = EcoCashGreen)
+                                Text(
+                                    "Your order has been sent to the restaurant. Pay the rider " +
+                                        "$${String.format(Locale.US, "%.2f", currentStep.amountDue)} in USD cash when your food arrives.",
+                                    textAlign = TextAlign.Center
+                                )
                             } else {
                                 Icon(Icons.Default.CheckCircle, contentDescription = "Success", tint = EcoCashGreen, modifier = Modifier.size(64.dp))
                                 Text("Payment Confirmed!", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium, color = EcoCashGreen)
-                                Text("Mobile Money cleared successfully. Your delivery has been routed to the restaurant kitchen.", textAlign = TextAlign.Center)
+                                Text("Your payment went through and your order has been sent to the restaurant.", textAlign = TextAlign.Center)
                             }
                             Text("Order Ref: ${currentStep.transactionRef}", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelMedium)
                             Button(
-                                onClick = { viewModel.resetPaymentState() },
+                                onClick = { viewModel.finishCheckout() },
                                 colors = ButtonDefaults.buttonColors(containerColor = EcoCashGreen)
                             ) {
                                 Text("Track Delivery 🛵")
@@ -1665,7 +1680,7 @@ fun ActiveTrackingScreen(viewModel: BiteDashViewModel) {
                         fontWeight = FontWeight.Bold
                     )
                     Text(
-                        text = "Once you place a restaurant food order using EcoCash, InnBucks, OneMoney, O'Mari, or Bank Cards, you can view the live GPS route simulator and rider path here!",
+                        text = "Once you place an order, you can follow it here, from the restaurant accepting it to the rider arriving at your door.",
                         style = MaterialTheme.typography.bodyMedium,
                         color = Color.Gray,
                         textAlign = TextAlign.Center
@@ -1684,6 +1699,35 @@ fun ActiveTrackingScreen(viewModel: BiteDashViewModel) {
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
+            val notice = resolvedOrderNotice
+            if (notice != null) {
+                // Another order was rejected/cancelled while this one is still in
+                // progress: say so above the tracker instead of switching silently.
+                item {
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(Icons.Default.Cancel, contentDescription = null, tint = MaterialTheme.colorScheme.error)
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = "${notice.restaurantName} ${if (notice.status == "REJECTED") "rejected" else "cancelled"} " +
+                                    "one of your orders. Check History for details.",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onErrorContainer,
+                                modifier = Modifier.weight(1f)
+                            )
+                            IconButton(onClick = { viewModel.dismissResolvedOrderNotice() }) {
+                                Icon(Icons.Default.Close, contentDescription = "Dismiss")
+                            }
+                        }
+                    }
+                }
+            }
             item {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -2014,6 +2058,13 @@ fun HarareCanvasMap(progress: Float) {
     }
 }
 
+// Readable name for a raw order status string. Unknown values are shown as-is
+// rather than going through RestaurantOrderStatus.fromString(), which would
+// relabel them as "Pending Acceptance".
+private fun orderStatusLabel(status: String): String =
+    com.example.ui.viewmodel.restaurant.RestaurantOrderStatus.entries
+        .find { it.value == status }?.displayName ?: status
+
 // HISTORY SCREEN
 @Composable
 fun HistoryScreen(viewModel: BiteDashViewModel) {
@@ -2107,12 +2158,24 @@ fun HistoryScreen(viewModel: BiteDashViewModel) {
                                 )
                             }
 
+                            // Rejected/cancelled get their own red badge instead of
+                            // looking like an in-progress order, and every status shows
+                            // its readable name ("Out for Delivery", not OUT_FOR_DELIVERY).
+                            val isEndedUnfulfilled = order.status == "REJECTED" || order.status == "CANCELLED"
                             Badge(
-                                containerColor = if (order.status == "COMPLETED") Color(0xFFE8F5E9) else Color(0xFFFFF3E0),
-                                contentColor = if (order.status == "COMPLETED") EcoCashGreen else Color(0xFFEF6C00)
+                                containerColor = when {
+                                    order.status == "COMPLETED" -> Color(0xFFE8F5E9)
+                                    isEndedUnfulfilled -> Color(0xFFFFEBEE)
+                                    else -> Color(0xFFFFF3E0)
+                                },
+                                contentColor = when {
+                                    order.status == "COMPLETED" -> EcoCashGreen
+                                    isEndedUnfulfilled -> Color(0xFFC62828)
+                                    else -> Color(0xFFEF6C00)
+                                }
                             ) {
                                 Text(
-                                    text = order.status,
+                                    text = orderStatusLabel(order.status),
                                     fontWeight = FontWeight.Bold,
                                     modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
                                 )
@@ -2134,7 +2197,7 @@ fun HistoryScreen(viewModel: BiteDashViewModel) {
                         ) {
                             Column {
                                 Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                                    Text("Paid with:", style = MaterialTheme.typography.bodySmall, color = Color.Gray)
+                                    Text("Payment:", style = MaterialTheme.typography.bodySmall, color = Color.Gray)
                                     Text(
                                         text = order.paymentMethod,
                                         fontWeight = FontWeight.Bold,
@@ -3433,15 +3496,18 @@ fun EditMenuDialog(
                                     onClick = {
                                         if (newName.isNotBlank() && newPrice.isNotBlank()) {
                                             val pr = newPrice.toDoubleOrNull() ?: 1.00
-                                            localItems.add(
-                                                MenuItem(
-                                                    id = NEW_MENU_ITEM_ID_PREFIX + System.currentTimeMillis().toString(),
-                                                    name = newName,
-                                                    description = if (newDesc.isBlank()) "Flame grilled delicious meal" else newDesc,
-                                                    price = pr,
-                                                    category = newCat
-                                                )
+                                            val newItem = MenuItem(
+                                                id = NEW_MENU_ITEM_ID_PREFIX + System.currentTimeMillis().toString(),
+                                                name = newName,
+                                                description = if (newDesc.isBlank()) "Flame grilled delicious meal" else newDesc,
+                                                price = pr,
+                                                category = newCat
                                             )
+                                            // Insert where the load's category+name sort would put it,
+                                            // so the list doesn't reshuffle after Save Menu.
+                                            val menuOrder = compareBy<MenuItem>({ it.category }, { it.name })
+                                            val insertAt = localItems.indexOfFirst { menuOrder.compare(it, newItem) > 0 }
+                                            if (insertAt == -1) localItems.add(newItem) else localItems.add(insertAt, newItem)
                                             newName = ""
                                             newPrice = ""
                                             newDesc = ""
@@ -4716,7 +4782,10 @@ fun RestaurantOwnerDashboard(
                                                         onClick = { restaurantViewModel.acceptOrder(order.orderId) },
                                                         colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
                                                     ) {
-                                                        Text("Accept & Start Cook")
+                                                        // Only accepts — Prepare is the next, separate step, so
+                                                        // "Accept & Start Cook" over-promised. Same labels as
+                                                        // Order Management (RestaurantOrderCard).
+                                                        Text("Accept", maxLines = 1)
                                                     }
                                                 }
                                                 com.example.ui.viewmodel.restaurant.RestaurantOrderStatus.ACCEPTED -> {
@@ -4734,7 +4803,7 @@ fun RestaurantOwnerDashboard(
                                                         onClick = { restaurantViewModel.markReadyForPickup(order.orderId) },
                                                         colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary)
                                                     ) {
-                                                        Text("Mark Cooked & Ready")
+                                                        Text("Ready", maxLines = 1)
                                                     }
                                                 }
                                                 com.example.ui.viewmodel.restaurant.RestaurantOrderStatus.READY_FOR_PICKUP -> {
@@ -5220,7 +5289,7 @@ private fun AdminOrdersTab(viewModel: BiteDashViewModel) {
                             Text(order.customerName.ifBlank { "Unknown customer" }, fontSize = 12.sp, color = Color.Gray)
                             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                                 Badge(containerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f), contentColor = MaterialTheme.colorScheme.primary) {
-                                    Text(order.status, modifier = Modifier.padding(horizontal = 6.dp, vertical = 1.dp), fontSize = 9.sp)
+                                    Text(orderStatusLabel(order.status), modifier = Modifier.padding(horizontal = 6.dp, vertical = 1.dp), fontSize = 9.sp)
                                 }
                                 Text("$${String.format(Locale.US, "%.2f", order.totalCost)}", fontSize = 11.sp, fontWeight = FontWeight.Bold)
                             }

@@ -57,8 +57,14 @@ sealed interface PaymentStep {
     /** Paynow hosted checkout is ready — customer needs to open [url] to pay. */
     data class RedirectToPaynow(val url: String) : PaymentStep
     /** [awaitingConfirmation]: a manual mobile-money payment — not actually confirmed paid yet,
-     *  an admin still has to check the money arrived. */
-    data class Success(val transactionRef: String, val awaitingConfirmation: Boolean = false) : PaymentStep
+     *  an admin still has to check the money arrived.
+     *  [cashOnDelivery]: nothing was paid in the app; the customer pays the rider [amountDue]. */
+    data class Success(
+        val transactionRef: String,
+        val awaitingConfirmation: Boolean = false,
+        val cashOnDelivery: Boolean = false,
+        val amountDue: Double = 0.0
+    ) : PaymentStep
     data class Error(val message: String) : PaymentStep
 }
 
@@ -640,32 +646,42 @@ viewModelScope.launch {
         viewModelScope.launch {
             var previousActiveOrderId: Int? = null
             dbActiveOrders.collect { activeList ->
+                // If the order being tracked a moment ago just left the active list,
+                // find out whether it's really done (COMPLETED) or the restaurant
+                // rejected/cancelled it, so the Tracking tab can say so. This has to
+                // run even when other orders are still active: previously it only ran
+                // when the list became empty, so with a second order in progress the
+                // tab silently switched to that one and the rejection was never shown.
+                val lastId = previousActiveOrderId
+                var notice: ResolvedOrderNotice? = null
+                if (lastId != null && activeList.none { it.id == lastId }) {
+                    // Direct DB read rather than relying on another, separately-
+                    // collected Flow being up to date yet for this exact write.
+                    val resolved = repository.getOrderById(lastId)
+                    if (resolved != null && (resolved.status == "REJECTED" || resolved.status == "CANCELLED")) {
+                        notice = ResolvedOrderNotice(resolved.restaurantName, resolved.status)
+                    }
+                }
+
                 if (activeList.isNotEmpty()) {
                     val currentTrack = activeList.first()
+                    if (notice != null) {
+                        _resolvedOrderNotice.value = notice
+                    } else if (currentTrack.id != lastId) {
+                        // A different order is now being tracked (e.g. a new one was
+                        // placed): clear any old notice so it can't resurface for this
+                        // unrelated order. Updates to the same order keep it.
+                        _resolvedOrderNotice.value = null
+                    }
                     previousActiveOrderId = currentTrack.id
                     _activeOrder.value = currentTrack
-                    // Clear any notice from a previous order — otherwise it could
-                    // resurface later for this new, unrelated order.
-                    _resolvedOrderNotice.value = null
                     if (_isManualMode.value) {
                         updateTrackingStateManual(currentTrack.status)
                     } else if (trackingJob == null || !trackingJob!!.isActive) {
                         resumeTracking(currentTrack)
                     }
                 } else {
-                    // If an order was active a moment ago and just disappeared from this
-                    // query, find out whether it's really done (COMPLETED) or the
-                    // restaurant rejected/cancelled it, so the Tracking tab can say so
-                    // instead of just reverting to its generic empty state.
-                    val lastId = previousActiveOrderId
-                    if (lastId != null) {
-                        // Direct DB read rather than relying on another, separately-
-                        // collected Flow being up to date yet for this exact write.
-                        val resolved = repository.getOrderById(lastId)
-                        if (resolved != null && (resolved.status == "REJECTED" || resolved.status == "CANCELLED")) {
-                            _resolvedOrderNotice.value = ResolvedOrderNotice(resolved.restaurantName, resolved.status)
-                        }
-                    }
+                    if (notice != null) _resolvedOrderNotice.value = notice
                     previousActiveOrderId = null
                     _activeOrder.value = null
                 }
@@ -818,14 +834,20 @@ viewModelScope.launch {
     // profile address (set at signup) the first time checkout opens, but
     // never overwrites something the customer has already typed here —
     // it stays editable per order from there.
+    // Same for the contact phone, which is replaced only while it's empty or
+    // still just a channel prefix hint ("07", "077", ...).
     fun loadDeliveryAddressDefaultIfBlank() {
-        if (_deliveryAddressInput.value.isNotBlank()) return
+        val phoneIsPrefixOnly = _phoneInput.value.length <= 3
+        if (_deliveryAddressInput.value.isNotBlank() && !phoneIsPrefixOnly) return
         val uid = com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.uid ?: return
         viewModelScope.launch {
             try {
                 val profile = firestoreService.getUser(uid)
                 if (_deliveryAddressInput.value.isBlank() && !profile?.address.isNullOrBlank()) {
                     _deliveryAddressInput.value = profile!!.address
+                }
+                if (_phoneInput.value.length <= 3 && !profile?.phone.isNullOrBlank()) {
+                    _phoneInput.value = profile!!.phone
                 }
             } catch (e: Exception) {
                 // Best-effort prefill only — checkout still works if this fails,
@@ -915,11 +937,16 @@ viewModelScope.launch {
             return
         }
 
-        // Simple validation
-        if (!isCash && paymentPhone.length < 9) {
+        // Simple validation. Cash orders need a real number too: it's the only
+        // way the rider can reach the customer, and the field is prefilled with
+        // just "07", which used to go through as the order's contact number.
+        if (paymentPhone.count { it.isDigit() } < 9) {
             _paymentStep.value = PaymentStep.Error(
-                if (method == "Bank Cards") "Please enter a contact phone number (at least 9 digits)."
-                else "Please enter a valid Zimbabwean mobile money number."
+                when {
+                    isCash -> "Please enter a phone number the rider can call when they arrive."
+                    method == "Bank Cards" -> "Please enter a contact phone number (at least 9 digits)."
+                    else -> "Please enter a valid Zimbabwean mobile money number."
+                }
             )
             return
         }
@@ -1098,15 +1125,22 @@ viewModelScope.launch {
             val orderId = repository.insertOrder(newOrder)
             val insertedOrder = newOrder.copy(id = orderId.toInt())
 
-            _paymentStep.value = PaymentStep.Success(ref, awaitingConfirmation = isManualPayment)
+            _paymentStep.value = PaymentStep.Success(
+                ref,
+                awaitingConfirmation = isManualPayment,
+                cashOnDelivery = isCash,
+                amountDue = orderTotal
+            )
             _activeOrder.value = insertedOrder
 
             // Clear Cart and select restaurant
             clearCart()
             _selectedRestaurant.value = null
 
-            // Jump to Active delivery tab
-            _selectedTab.value = 2
+            // Stay on the Cart tab so the confirmation dialog (which lives on that
+            // screen) is actually seen; its button / dismiss moves on to Tracking via
+            // finishCheckout(). Jumping straight to Tracking here left the dialog
+            // unseen, and it then popped up over the next checkout instead.
 
             if (!_isManualMode.value) {
                 // Start delivery simulation!
@@ -1119,6 +1153,12 @@ viewModelScope.launch {
 
     fun resetPaymentState() {
         _paymentStep.value = PaymentStep.Idle
+    }
+
+    /** Closes the order-placed confirmation and goes to the Tracking tab. */
+    fun finishCheckout() {
+        _paymentStep.value = PaymentStep.Idle
+        _selectedTab.value = 2
     }
 
     /**

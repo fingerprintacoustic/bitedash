@@ -63,6 +63,7 @@ fun RestaurantOrdersScreen(
         onReject = viewModel::rejectOrder,
         onStartPreparing = viewModel::startPreparing,
         onMarkReadyForPickup = viewModel::markReadyForPickup,
+        onCancel = viewModel::cancelOrder,
         onSelectOrder = viewModel::selectOrder,
         modifier = modifier
     )
@@ -80,6 +81,7 @@ fun RestaurantOrdersContent(
     onReject: (String) -> Unit,
     onStartPreparing: (String) -> Unit,
     onMarkReadyForPickup: (String) -> Unit,
+    onCancel: (String) -> Unit = {},
     onSelectOrder: (com.example.ui.viewmodel.restaurant.RestaurantOrder) -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -126,6 +128,7 @@ fun RestaurantOrdersContent(
                         onReject = onReject,
                         onStartPreparing = onStartPreparing,
                         onMarkReadyForPickup = onMarkReadyForPickup,
+                        onCancel = onCancel,
                         actionInProgress = uiState.actionInProgress
                     )
                 }
@@ -233,6 +236,7 @@ private fun OrdersList(
     onReject: (String) -> Unit,
     onStartPreparing: (String) -> Unit,
     onMarkReadyForPickup: (String) -> Unit,
+    onCancel: (String) -> Unit,
     actionInProgress: String?
 ) {
     LazyColumn(
@@ -271,6 +275,7 @@ private fun OrdersList(
                 onReject = { onReject(order.orderId) },
                 onStartPreparing = { onStartPreparing(order.orderId) },
                 onMarkReady = { onMarkReadyForPickup(order.orderId) },
+                onCancel = { onCancel(order.orderId) },
                 isLoading = actionInProgress == order.orderId
             )
         }

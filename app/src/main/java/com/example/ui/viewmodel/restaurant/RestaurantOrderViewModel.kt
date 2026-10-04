@@ -186,6 +186,42 @@ class RestaurantOrderViewModel(
     }
     
     /**
+     * Cancel an order that's already being prepared (e.g. an ingredient ran out).
+     * Updates order status to CANCELLED in Firestore; the customer's app shows
+     * the same "your order was cancelled" notice it shows for rejections.
+     */
+    fun cancelOrder(orderId: String) {
+        viewModelScope.launch {
+            _uiState.update { it.copy(actionInProgress = orderId) }
+
+            try {
+                val success = firestoreService.updateOrderStatus(
+                    orderId = orderId,
+                    status = RestaurantOrderStatus.CANCELLED.value
+                )
+
+                if (success) {
+                    _uiState.update { it.copy(actionInProgress = null) }
+                } else {
+                    _uiState.update {
+                        it.copy(
+                            actionInProgress = null,
+                            errorMessage = "Failed to cancel order"
+                        )
+                    }
+                }
+            } catch (e: Exception) {
+                _uiState.update {
+                    it.copy(
+                        actionInProgress = null,
+                        errorMessage = "Failed to cancel order: ${e.message}"
+                    )
+                }
+            }
+        }
+    }
+
+    /**
      * Start preparing an accepted order.
      * Updates order status to PREPARING in Firestore.
      */
