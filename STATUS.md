@@ -39,7 +39,7 @@ doc were deleted, and none of them exist anymore. No menu items or orders were c
 
 Side note: on 6.22, a rider waiting on the "Registration Submitted / awaiting admin approval" screen is not moved on
 when an admin approves them. The dashboard only appears after the app is reopened. The cause was that the Rider tab
-read `drivers/{uid}` once instead of listening to it. **Fixed on `main` (not yet in a release build):** the tab now
+read `drivers/{uid}` once instead of listening to it. **Fixed in 6.23 (built, not yet on Play):** the tab now
 uses `FirestoreService.getDriverFlow()`. Verified on a debug build (2026-10-03): a temporary driver was approved in
 Firestore while that screen was open, and within 3 s it moved on to the rider guide and then the Driver Dashboard,
 with no restart. Switch Role still stayed on the role screen afterwards. The temporary account was deleted (Auth
@@ -169,13 +169,14 @@ No remaining `bd-test-*` accounts or data. `feature/pesepay` branch (see below) 
 
 The signed AAB is built by `.github/workflows/build-release-aab.yml` (manual run or a `release-*` tag) from the
 repository secrets `KEYSTORE_BASE64`, `STORE_PASSWORD`, `KEY_PASSWORD`, `PAYNOW_INTEGRATION_ID`,
-`PAYNOW_INTEGRATION_KEY`. `app/build.gradle.kts` is at `versionCode = 28` / `versionName = "6.22"`; the version code
-must be higher than the highest one already uploaded to Google Play (raise it if Play already has 28 or more).
-The latest release build is 6.22 (versionCode 28), made 2026-10-03 from `main` at commit `cd92a1f` (the PR #12
-merge, with the phone login fixes; Actions run 37151661448, artifact `BiteDash-release-aab`). It is copied to
-`C:\Users\finge\Downloads\BiteDash-6.22-code28-release.aab`, which replaces the older 6.20/6.21 builds and is the one
-to upload. It is signed with the release certificate (CN=Fingerprint Acoustic), not the debug key. Uploading to Play
-is done in the Play Console.
+`PAYNOW_INTEGRATION_KEY`. `app/build.gradle.kts` is at `versionCode = 29` / `versionName = "6.23"`. The version code
+must be higher than the highest one already uploaded to Google Play (raise it if Play already has 29 or more).
+The latest release build is **6.23 (versionCode 29)**, made 2026-10-03 from `main` at commit `739fa87` (the PR #21
+merge; Actions run 37168645007, artifact `BiteDash-release-aab`). It adds the live rider-approval fix (PR #20) on top
+of 6.22. It is copied to `C:\Users\finge\Downloads\BiteDash-6.23-code29-release.aab`, which is the one to upload, and
+is signed with the same upload certificate as 6.22 (CN=Fingerprint Acoustic), not the debug key. **Not uploaded to
+Play yet.** Uploading is done in the Play Console. The previous build, 6.22 (versionCode 28, commit `cd92a1f`, run
+37151661448), is still in Downloads.
 
 ### Google Play tracks (as of 2026-10-03)
 
