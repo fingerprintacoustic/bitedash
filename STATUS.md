@@ -39,11 +39,13 @@ doc were deleted, and none of them exist anymore. No menu items or orders were c
 
 Side note: on 6.22, a rider waiting on the "Registration Submitted / awaiting admin approval" screen is not moved on
 when an admin approves them. The dashboard only appears after the app is reopened. The cause was that the Rider tab
-read `drivers/{uid}` once instead of listening to it. **Fixed in 6.23 (built, not yet on Play):** the tab now
-uses `FirestoreService.getDriverFlow()`. Verified on a debug build (2026-10-03): a temporary driver was approved in
-Firestore while that screen was open, and within 3 s it moved on to the rider guide and then the Driver Dashboard,
-with no restart. Switch Role still stayed on the role screen afterwards. The temporary account was deleted (Auth
-user, `users/` and `drivers/` docs).
+read `drivers/{uid}` once instead of listening to it. **Fixed in 6.23**, where the tab now uses
+`FirestoreService.getDriverFlow()`. **Verified on the 6.23 release build installed from Play closed testing**
+(2026-10-03, after a first check on a debug build). A temporary driver was signed up and left on "Registration
+Submitted", then approved in Firestore without touching the phone. Within 3 s the screen moved on to the rider guide
+and then the Driver Dashboard, with no restart. Switch Role still landed on the role screen ("Go to My Rider
+Dashboard") and stayed there, the button returned to the dashboard, and Sign Out worked. Each temporary account was
+deleted afterwards (Auth user, `users/` and `drivers/` docs), and none of them exist anymore.
 Restaurants were not affected: their tab already uses the live `restaurantsState` listener.
 
 ## Phone/SMS (OTP) login: verified on the 6.22 release build (2026-10-03)
@@ -130,7 +132,8 @@ and number typed in the app are not sent to Paynow; the customer picks how to pa
 ## Not verified
 
 - A completed Paynow payment (EcoCash / OneMoney / InnBucks / card) and its webhook.
-- The rest of the app on a release-signed build (on 6.22, only phone login and Switch Role have been tested).
+- The rest of the app on a release-signed build. Only phone login and Switch Role were tested on 6.22, and only rider
+  approval and Switch Role on 6.23.
 - Simulation mode (non-manual checkout) does not sync real order status.
 - Switch Role from the **customer header** icon on the release build. The Driver and Restaurant Dashboard
   entry points passed on 6.22; see the section above.
@@ -173,9 +176,9 @@ repository secrets `KEYSTORE_BASE64`, `STORE_PASSWORD`, `KEY_PASSWORD`, `PAYNOW_
 must be higher than the highest one already uploaded to Google Play (raise it if Play already has 29 or more).
 The latest release build is **6.23 (versionCode 29)**, made 2026-10-03 from `main` at commit `739fa87` (the PR #21
 merge; Actions run 37168645007, artifact `BiteDash-release-aab`). It adds the live rider-approval fix (PR #20) on top
-of 6.22. It is copied to `C:\Users\finge\Downloads\BiteDash-6.23-code29-release.aab`, which is the one to upload, and
-is signed with the same upload certificate as 6.22 (CN=Fingerprint Acoustic), not the debug key. It was uploaded
-**straight to closed testing** on 2026-10-03 (see the tracks below). Uploading is done by hand in the Play Console:
+of 6.22. It is copied to `C:\Users\finge\Downloads\BiteDash-6.23-code29-release.aab` and is signed with the same
+upload certificate as 6.22 (CN=Fingerprint Acoustic), not the debug key. It was **uploaded straight to closed
+testing** on 2026-10-03 at 9:42 PM, skipping internal testing. Uploading is done by hand in the Play Console:
 the AAB is too large for browser automation, and there is no Play publishing API set up. The previous build, 6.22
 (versionCode 28, commit `cd92a1f`, run 37151661448), is still in Downloads.
 
@@ -184,12 +187,14 @@ the AAB is too large for browser automation, and there is no Play publishing API
 - **No production release yet.** The app is in **closed testing**. As a new personal developer account, it needs
   at least **12 testers opted in to the closed test for 14 days in a row** before production access can be
   requested. There are fewer than 12 testers so far.
-- **Internal testing:** still 6.22 (versionCode 28). 6.23 was not put on internal testing. Phone login was verified
-  on 6.22, installed from Play.
-- **Closed testing:** 6.23 (versionCode 29), uploaded directly to closed testing on 2026-10-03, replacing 6.22
-  (which had been promoted from internal testing earlier the same day). It may still be in Play review before
-  testers get it. Play updates testers automatically, or they can tap Update on the BiteDash page in the Play Store.
-  6.23 has not been installed from Play and checked on a device yet.
+- **Internal testing:** 6.22 (versionCode 28) was tested from here, and phone login was verified on it, installed from
+  Play. The Play Console's "Latest releases" overview (checked 2026-10-03) lists internal testing as release
+  `0.0.0.4` (versionCode 4, Jun 24, 2026), so 6.22 may no longer be the release shown on that track.
+- **Closed testing ("Bitedash tester" track):** **6.23 (versionCode 29)**, "Available to testers on Google Play", full
+  rollout, uploaded directly on 2026-10-03 at 9:42 PM. It replaces 6.22, which had been promoted from internal testing
+  earlier that day (and which had replaced 6.21). The test phone was offered the update in the Play Store right away
+  and installed 6.23 from Play. The rider-approval fix and Switch Role passed on that install (see above). Play
+  updates testers automatically, or they can tap Update on the BiteDash page in the Play Store.
 - Once production access is granted, promote the newest tested build to production.
 
 ## Branches
