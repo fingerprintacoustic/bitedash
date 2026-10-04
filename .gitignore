@@ -15,4 +15,4 @@
 .externalNativeBuild
 .cxx
 local.properties
-.env
+.env.claude/settings.local.json

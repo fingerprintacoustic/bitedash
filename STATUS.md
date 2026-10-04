@@ -90,8 +90,8 @@ An admin checks the number and confirms in the new **Manual Pay** tab of the Adm
 sees the order (same "hide until paid" pattern as online orders). From **6.24** this is controlled from Firestore,
 not the app code (see **Checkout settings** below): set `paynowLive` to `true` once Paynow is live to return these
 five methods to the normal automatic Paynow flow, with no new app version. (6.23 and older have it hard-coded off.)
-Set the receiving numbers in Manual Pay before
-relying on this (nothing is pre-filled). Verified end to end on a device and over REST, including that the
+Receiving numbers are set (`public_settings/payment`, entered by the admin 2026-09-22; checked 2026-10-04):
+EcoCash, InnBucks, O'Mari and Telecash 0772673352, OneMoney 0712592526. Verified end to end on a device and over REST, including that the
 restaurant cannot see an unconfirmed order.
 
 ## Online payments (Paynow): EcoCash express checkout verified in TEST mode
@@ -249,8 +249,8 @@ All `bd-test-*` test data has been removed from the production Firebase project:
   verified an unauthenticated read of its document is now refused (403), same as it would be for any other hidden
   restaurant. Its 2 `menu_items` deleted.
 - Both test `drivers/` documents, all 16 test `orders/`, and 3 `payments/` records deleted.
-- `public_settings/payment` (the manual-payment receiving numbers) is empty — nothing pre-filled; an admin must
-  enter real numbers before manual mobile-money payments are actually usable by customers.
+- `public_settings/payment` (the manual-payment receiving numbers) was left empty by the cleanup; the admin entered
+  the real numbers later the same day (see **Manual mobile-money payments**).
 
 No remaining `bd-test-*` accounts or data. `feature/pesepay` branch (see below) is unaffected — it has no commits.
 
