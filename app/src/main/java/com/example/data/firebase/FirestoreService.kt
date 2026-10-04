@@ -117,6 +117,39 @@ class FirestoreService {
             .catch { emit(CheckoutSettings()) }
     }
 
+    // ==================== RATINGS ====================
+
+    // The signed-in customer's ratings, as orderId -> stars, so History knows which
+    // delivered orders are already rated.
+    fun getMyRatingsFlow(userId: String): Flow<Map<String, Int>> {
+        return db.collection("ratings")
+            .whereEqualTo("userId", userId)
+            .snapshots()
+            .map { snapshot ->
+                snapshot.documents.associate { it.id to (it.getLong("stars")?.toInt() ?: 0) }
+            }
+            .catch { emit(emptyMap()) }
+    }
+
+    // One rating per delivered order (document ID = order ID). firestore.rules only allow
+    // it for the customer's own COMPLETED order, and the onRatingCreated Cloud Function
+    // adds it to the restaurant's average.
+    suspend fun submitRating(orderId: String, userId: String, stars: Int): Boolean {
+        return try {
+            db.collection("ratings").document(orderId).set(
+                mapOf(
+                    "orderId" to orderId,
+                    "userId" to userId,
+                    "stars" to stars,
+                    "createdAt" to com.google.firebase.firestore.FieldValue.serverTimestamp()
+                )
+            ).await()
+            true
+        } catch (e: Exception) {
+            false
+        }
+    }
+
     suspend fun setPublicPaymentNumbers(numbers: Map<String, String>): Boolean {
         return try {
             db.collection("public_settings").document("payment").set(numbers).await()

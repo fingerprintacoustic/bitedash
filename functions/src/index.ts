@@ -1,6 +1,7 @@
 import { initializeApp } from "firebase-admin/app";
 import { getFirestore, FieldValue, Firestore } from "firebase-admin/firestore";
 import { onCall, onRequest, HttpsError } from "firebase-functions/v2/https";
+import { onDocumentCreated } from "firebase-functions/v2/firestore";
 import { defineSecret } from "firebase-functions/params";
 import { logger } from "firebase-functions/v2";
 import {
@@ -563,3 +564,47 @@ export const placeOrder = onCall({ region: REGION }, async (request) => {
     status,
   };
 });
+
+/**
+ * Adds a customer's star rating to the restaurant's running average.
+ *
+ * Ratings are written by the app to ratings/{orderId}; firestore.rules only allow that
+ * for the customer's own COMPLETED order, once. The restaurant comes from the order
+ * itself, not from the rating, so a client can't aim a rating at another restaurant.
+ * avgRating / ratingCount / ratingSum are separate from the legacy `rating` field, which
+ * older app builds still show, so those keep showing what they always did.
+ */
+export const onRatingCreated = onDocumentCreated(
+  { document: "ratings/{orderId}", region: REGION },
+  async (event) => {
+    const stars = event.data?.get("stars");
+    if (typeof stars !== "number" || stars < 1 || stars > 5) {
+      logger.warn("Ignoring rating with invalid stars", { orderId: event.params.orderId, stars });
+      return;
+    }
+    const order = await db.collection("orders").doc(event.params.orderId).get();
+    const restaurantId = order.get("restaurantId");
+    if (!order.exists || typeof restaurantId !== "string" || !restaurantId) {
+      logger.warn("Rating for an order with no restaurant", { orderId: event.params.orderId });
+      return;
+    }
+    const restaurantRef = db.collection("restaurants").doc(restaurantId);
+    const ratingRef = db.collection("ratings").doc(event.params.orderId);
+    await db.runTransaction(async (tx) => {
+      // Functions can deliver the same event more than once; `counted` makes a
+      // repeat a no-op instead of counting the rating twice.
+      const rating = await tx.get(ratingRef);
+      const restaurant = await tx.get(restaurantRef);
+      if (!rating.exists || rating.get("counted") === true || !restaurant.exists) return;
+      const count = (restaurant.get("ratingCount") ?? 0) + 1;
+      const sum = (restaurant.get("ratingSum") ?? 0) + stars;
+      tx.update(restaurantRef, {
+        ratingCount: count,
+        ratingSum: sum,
+        avgRating: Math.round((sum / count) * 10) / 10,
+      });
+      // restaurantId is recorded on the rating for the admin's reference.
+      tx.update(ratingRef, { counted: true, restaurantId });
+    });
+  }
+);

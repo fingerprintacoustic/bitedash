@@ -6,9 +6,11 @@ Last updated: 2026-10-03. Firebase project: `bitedash-1e078`. Branch: `main` (ev
 
 - **Firestore rules** (`firestore.rules`): restaurant owners/staff cannot change `isApproved`; customers can only
   create *new* orders (status `PENDING_ACCEPTANCE`/`PREPARING`, unassigned, unsettled, payment `PENDING` or
-  `CASH_ON_DELIVERY`).
+  `CASH_ON_DELIVERY`). Since 2026-10-04 also: `ratings/{orderId}` (see **Customer ratings**), and owners/staff can't
+  write a restaurant's `avgRating`/`ratingCount`/`ratingSum`.
 - **Cloud Functions** (`functions/`, us-central1): `initiatePaynowPayment`, `checkPaynowPaymentStatus`,
-  `paynowResultWebhook`, `paynowReturn`, and **`placeOrder`** (prices an order server-side from Firestore).
+  `paynowResultWebhook`, `paynowReturn`, **`placeOrder`** (prices an order server-side from Firestore), and
+  **`onRatingCreated`** (deployed 2026-10-04; the project's first Firestore-triggered, 2nd-gen event function).
 
 ## App behaviour verified on a device (debug build)
 
@@ -159,7 +161,29 @@ and number typed in the app are not sent to Paynow; the customer picks how to pa
 
 - Client order creation is still allowed by the rules (needed by older app builds). Once the version that uses
   `placeOrder` is what everyone has, change the `orders` create rule to `allow create: if false;`.
-- New restaurants get a hard-coded 5.0 rating (`BiteDashMainApp.kt`, restaurant setup). Deferred for now.
+
+## Customer ratings (6.24; server side live since 2026-10-04)
+
+Replaces the made-up ratings: every restaurant used to show a number typed into the code (5.0 when an owner created
+it, 4.5 when an admin added a brand) and nobody could rate anything.
+- A customer rates a **delivered** order 1–5 stars from History ("Rate <restaurant>"), once per order. Afterwards the
+  card shows "You rated this order ★★★★☆".
+- `ratings/{orderId}` holds `orderId`, `userId`, `stars`, `createdAt`. The rules allow create only by the customer who
+  placed that order, only if the order is `COMPLETED`, and only once (no update/delete). The Cloud Function
+  `onRatingCreated` then adds it to the restaurant's `ratingCount`, `ratingSum` and `avgRating` in a transaction.
+  It looks the restaurant up from the order, so a rating can't target another restaurant, and it marks the rating
+  `counted` so a repeated event can't count it twice.
+- 6.24 shows `avgRating` ("4.0" on Browse, "4.0 / 5.0" on the restaurant page), or **"New"** before the first rating.
+  The old hand-set `rating` field is left alone, so 6.23 and older keep showing what they showed before.
+- Existing restaurants all start as "New" in 6.24, since they have no real ratings yet.
+- Tested 2026-10-04. **Server:** 13 checks over the Firestore API with temporary accounts. A customer's own
+  delivered order could be rated. Rating twice, an undelivered order, someone else's order, 6 stars, extra fields,
+  and an owner editing their own `avgRating` were all refused. The count and average updated correctly and the legacy
+  field was unchanged. **On the phone (debug build):** a new restaurant showed "New, no ratings yet". After the order
+  was delivered, History offered "Rate BD Test Kitchen". 4 stars saved, and the restaurant then showed 4.0 on Browse
+  and 4.0 / 5.0 on its page. All test data was deleted afterwards and checked to be gone.
+- Not built: a rating count next to the average (it would need a local database change, which in this app wipes
+  customers' order history), and rating riders.
 
 ## 6.24 fixes: all tested together on a device (debug build, 2026-10-03)
 

@@ -62,7 +62,9 @@ fun FirestoreRestaurant.toRoomEntity(menuItems: List<MenuItem>): RestaurantEntit
         id = id,
         name = name,
         description = description,
-        rating = rating,
+        // Real customer average (0 = no ratings yet, shown as "New"); the legacy
+        // hand-set `rating` field is only for older app builds.
+        rating = avgRating,
         deliveryTime = deliveryTime,
         deliveryFee = deliveryFee,
         category = category,
