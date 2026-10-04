@@ -34,6 +34,7 @@ import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -281,16 +282,43 @@ class BiteDashViewModel(application: Application) : AndroidViewModel(application
     // verification, and O'Mari/ZIPIT aren't enabled). Picking one explains this and blocks
     // the pay button instead of failing at Paynow. To switch a channel on once Paynow
     // enables it, just remove it from this set.
-    val unavailableCheckoutMethods = setOf("ZIPIT", "Bank Cards")
-
-    // While the Paynow integration isn't live (see PAYNOW_LIVE), these wallets are paid
+    //
+    // While the Paynow integration isn't live, the wallets in manualPaymentMethods are paid
     // manually instead: the customer sends the money themselves to the business's own
     // number and reports the reference, and an admin checks it arrived before the
-    // restaurant sees the order. Flip PAYNOW_LIVE once Paynow confirms the integration is
-    // live, and these go back to the normal automatic Paynow flow with no other changes
-    // needed here.
+    // restaurant sees the order. Once Paynow confirms the integration is live, set
+    // paynowLive to true in Firestore (public_settings/checkout) and they go back to the
+    // automatic Paynow flow, with no new app version needed. Both switches used to be
+    // constants here, which meant a new release just to turn Paynow on.
     val manualPaymentMethods = setOf("EcoCash", "OneMoney", "InnBucks", "Telecash", "O'Mari")
-    private val PAYNOW_LIVE = false
+
+    // Live from public_settings/checkout; restarts the listener on sign-in, since the
+    // document is only readable by signed-in users.
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+    val checkoutSettings: StateFlow<com.example.data.firebase.CheckoutSettings> = authUid
+        .flatMapLatest { uid ->
+            if (uid == null) kotlinx.coroutines.flow.flowOf(com.example.data.firebase.CheckoutSettings())
+            else firestoreService.getCheckoutSettingsFlow()
+        }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, com.example.data.firebase.CheckoutSettings())
+
+    fun isMethodUnavailable(method: String): Boolean = method in checkoutSettings.value.unavailableMethods
+
+    // "EcoCash, InnBucks or cash on delivery", leaving out [excluding] and anything
+    // switched off, for the "isn't available yet" messages.
+    fun suggestedPaymentAlternatives(excluding: String): String {
+        val picks = listOf("EcoCash", "InnBucks", "USD Cash")
+            .filter { it != excluding && it !in checkoutSettings.value.unavailableMethods }
+            .map { if (it == "USD Cash") "cash on delivery" else it }
+        return when (picks.size) {
+            0 -> "cash on delivery"
+            1 -> picks[0]
+            else -> picks.dropLast(1).joinToString(", ") + " or " + picks.last()
+        }
+    }
+
+    fun isManualPaymentMethod(method: String): Boolean =
+        !checkoutSettings.value.paynowLive && method in manualPaymentMethods
 
     private val _manualPaymentReference = MutableStateFlow("")
     val manualPaymentReference: StateFlow<String> = _manualPaymentReference.asStateFlow()
@@ -928,11 +956,11 @@ viewModelScope.launch {
         val paymentPhone = _phoneInput.value
         val method = _checkoutMethod.value
         val isCash = method == "USD Cash"
-        val isManualPayment = !PAYNOW_LIVE && method in manualPaymentMethods
+        val isManualPayment = isManualPaymentMethod(method)
 
-        if (method in unavailableCheckoutMethods) {
+        if (isMethodUnavailable(method)) {
             _paymentStep.value = PaymentStep.Error(
-                "$method payments aren't available yet. Please pay with EcoCash, InnBucks or cash on delivery."
+                "$method payments aren't available yet. Please pay with ${suggestedPaymentAlternatives(method)}."
             )
             return
         }
@@ -1328,10 +1356,6 @@ viewModelScope.launch {
 
     fun setProfile(profile: UserProfile) {
         _currentProfile.value = profile
-    }
-
-    fun setCheckoutModeIsManual(isManual: Boolean) {
-        _isManualMode.value = isManual
     }
 
     fun claimOrderManual(orderId: Int, driverId: String, driverName: String) {

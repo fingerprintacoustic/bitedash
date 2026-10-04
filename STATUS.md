@@ -85,9 +85,10 @@ certificates that are not registered. Phone login on the debug build worked with
 Added 2026-09-22: while Paynow isn't live, checkout for EcoCash/OneMoney/InnBucks/Telecash/O'Mari shows the
 business's own receiving number and asks the customer for the transfer reference, instead of using Paynow at all.
 An admin checks the number and confirms in the new **Manual Pay** tab of the Admin Control Hub before the restaurant
-sees the order (same "hide until paid" pattern as online orders). Controlled by a single flag,
-`BiteDashViewModel.PAYNOW_LIVE` (currently `false`) — flip it once Paynow is live to return these five methods to
-the normal automatic Paynow flow; nothing else needs to change. Set the receiving numbers in Manual Pay before
+sees the order (same "hide until paid" pattern as online orders). From **6.24** this is controlled from Firestore,
+not the app code (see **Checkout settings** below): set `paynowLive` to `true` once Paynow is live to return these
+five methods to the normal automatic Paynow flow, with no new app version. (6.23 and older have it hard-coded off.)
+Set the receiving numbers in Manual Pay before
 relying on this (nothing is pre-filled). Verified end to end on a device and over REST, including that the
 restaurant cannot see an unconfirmed order.
 
@@ -104,8 +105,24 @@ restaurant cannot see an unconfirmed order.
 - Enabled on the Paynow account (USD only): EcoCash, Zimswitch, PayGo, InnBucks, Internet/Mobile Banking, POS2U.
   Visa/Mastercard are inactive (need business verification). OneMoney and Telecash exist only as ZWG (unticked).
   Do not tick ZWG methods: the app sends USD amounts.
-- To do: click "Request to be Set Live" in Paynow; then hide channels that can't work (OneMoney, Telecash, O'Mari,
-  ZIPIT, Bank Cards) until enabled; rebuild the AAB.
+- To do: click "Request to be Set Live" in Paynow. Once it's live: delete `functions/.env` and redeploy (above),
+  set `paynowLive: true`, and add any channel that can't work yet (e.g. OneMoney, Telecash, O'Mari) to
+  `unavailableMethods`. All of that is in Firestore, so **no new AAB is needed** (6.24 and later).
+
+## Checkout settings: Firestore `public_settings/checkout` (6.24 and later)
+
+Changeable in the Firebase console (Firestore → `public_settings` → `checkout`) without a new app version. The app
+picks up changes live, without a restart. Readable by any signed-in user; only admins can write (existing
+`public_settings` rule). Current values (set 2026-10-04) match the app's built-in defaults:
+- `paynowLive` (boolean, `false`): `false` means EcoCash/OneMoney/InnBucks/Telecash/O'Mari are paid manually (Manual
+  Pay); `true` sends them through Paynow.
+- `unavailableMethods` (array of strings, `["ZIPIT", "Bank Cards"]`): channels shown at checkout but blocked with "Not
+  available yet". Use the exact labels: EcoCash, InnBucks, OneMoney, O'Mari, Telecash, ZIPIT, Bank Cards, USD Cash.
+- `zigPerUsd` (number, `0`): ZiG per US dollar for the "≈ ZiG" line under the checkout total. `0` hides the line.
+  (It used to show a made-up, hard-coded rate of 22.)
+
+All three were tested on a device (debug build, 2026-10-04): each change showed up on the open checkout screen within
+a few seconds, and setting the defaults back restored the normal behaviour.
 
 ### Earlier notes (hosted-page flow, still used for cards)
 
@@ -134,7 +151,8 @@ and number typed in the app are not sent to Paynow; the customer picks how to pa
 - A completed Paynow payment (EcoCash / OneMoney / InnBucks / card) and its webhook.
 - The rest of the app on a release-signed build. Only phone login and Switch Role were tested on 6.22, and only rider
   approval and Switch Role on 6.23.
-- Simulation mode (non-manual checkout) does not sync real order status.
+- Simulation mode: from 6.24 customers can no longer switch it on (the "Manual Multi-Role Mode" checkbox is gone), so
+  every real order follows its real status. 6.23 and older still have the checkbox.
 - The 6.24 fixes on a release build (they were tested on a debug build; see "6.24 fixes" below).
 
 ## Known open items
@@ -183,6 +201,15 @@ Other bugs found and fixed for 6.24:
 - Prices on rider and restaurant order cards are always formatted as `$2.00`, whatever the phone's language.
 - Smaller text fixes: the empty Tracking tab no longer lists every payment method except cash or mentions a "GPS
   simulator". "How to use BiteDash as a administrator" now says "an administrator".
+
+Added 2026-10-04, so a future change doesn't need a new version (tested on a device, debug build):
+- **Paynow on/off, unavailable channels and the ZiG rate now come from Firestore** (see **Checkout settings**).
+  `PAYNOW_LIVE` used to be a constant, so turning Paynow on needed a new release. The checkout screen also ignored it
+  when deciding whether to show the manual-payment steps, so flipping it alone wouldn't even have worked fully.
+- **"Manual Multi-Role Mode" checkbox removed** from the customer role screen. Unticking it gave a customer's real
+  order a fake, simulated delivery on Tracking. The customer blurb above it was rewritten.
+- A channel marked unavailable now says "Not available yet" instead of describing its normal payment flow, and the
+  "aren't available yet" message suggests only channels that are actually on.
 
 Also tested in this run and working: sign-up for all four roles, restaurant setup and approval, the cash order from
 checkout through accept/prepare/ready, rider claim/pick-up/deliver (`COMPLETED` / `DELIVERED` in Firestore), rider

@@ -99,6 +99,24 @@ class FirestoreService {
         return (snapshot.data as? Map<String, String>) ?: emptyMap()
     }
 
+    // Checkout switches an admin can change in Firestore (public_settings/checkout) without
+    // shipping a new app version. Missing fields keep the CheckoutSettings defaults, and a
+    // read failure (e.g. signed out) emits the defaults too.
+    fun getCheckoutSettingsFlow(): Flow<CheckoutSettings> {
+        return db.collection("public_settings").document("checkout")
+            .snapshots()
+            .map { doc ->
+                val defaults = CheckoutSettings()
+                CheckoutSettings(
+                    paynowLive = doc.getBoolean("paynowLive") ?: defaults.paynowLive,
+                    unavailableMethods = (doc.get("unavailableMethods") as? List<*>)
+                        ?.filterIsInstance<String>()?.toSet() ?: defaults.unavailableMethods,
+                    zigPerUsd = doc.getDouble("zigPerUsd") ?: defaults.zigPerUsd
+                )
+            }
+            .catch { emit(CheckoutSettings()) }
+    }
+
     suspend fun setPublicPaymentNumbers(numbers: Map<String, String>): Boolean {
         return try {
             db.collection("public_settings").document("payment").set(numbers).await()

@@ -299,3 +299,18 @@ data class FirestoreAdminSettings(
     @ServerTimestamp
     val updatedAt: Timestamp? = null
 )
+
+/**
+ * Checkout switches read from public_settings/checkout, so they can change without a new
+ * app version. The defaults are what applies when the document or a field is missing.
+ *
+ * @property paynowLive false: EcoCash/OneMoney/InnBucks/Telecash/O'Mari are paid manually to
+ *   the business's own number and an admin confirms them. true: they go through Paynow.
+ * @property unavailableMethods checkout channels that are shown but can't be used yet.
+ * @property zigPerUsd ZiG per US dollar for the "≈ ZiG" line at checkout; 0 hides the line.
+ */
+data class CheckoutSettings(
+    val paynowLive: Boolean = false,
+    val unavailableMethods: Set<String> = setOf("ZIPIT", "Bank Cards"),
+    val zigPerUsd: Double = 0.0
+)
