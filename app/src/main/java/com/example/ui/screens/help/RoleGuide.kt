@@ -104,7 +104,7 @@ private fun stepsFor(role: GuideRole): List<GuideStep> = when (role) {
         GuideStep(
             "Handle orders",
             "Order Management shows incoming orders. Accept or Reject a new one, tap Prepare, then " +
-                "Mark Ready for Pickup so a rider can claim it. The header shows how many still need your action."
+                "Ready once it's ready for pickup, so a rider can claim it. The header shows how many still need your action."
         ),
         GuideStep(
             "Cash orders",
@@ -222,7 +222,7 @@ fun RoleGuideButton(role: GuideRole, autoShow: Boolean = true) {
     ) {
         Icon(
             imageVector = Icons.Default.Info,
-            contentDescription = "How to use BiteDash as a ${role.label.lowercase()}",
+            contentDescription = "How to use BiteDash as ${withArticle(role.label.lowercase())}",
             tint = MaterialTheme.colorScheme.primary
         )
     }
@@ -244,7 +244,7 @@ fun RoleGuideDialog(role: GuideRole, onDismiss: () -> Unit) {
             Column {
                 Text(role.headline, fontWeight = FontWeight.Bold)
                 Text(
-                    "How to use BiteDash as a ${role.label.lowercase()}",
+                    "How to use BiteDash as ${withArticle(role.label.lowercase())}",
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -289,3 +289,7 @@ fun RoleGuideDialog(role: GuideRole, onDismiss: () -> Unit) {
         }
     )
 }
+
+// "a customer", "a rider", but "an administrator".
+private fun withArticle(noun: String): String =
+    if (noun.firstOrNull()?.lowercaseChar() in setOf('a', 'e', 'i', 'o', 'u')) "an $noun" else "a $noun"

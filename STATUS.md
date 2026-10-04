@@ -135,18 +135,58 @@ and number typed in the app are not sent to Paynow; the customer picks how to pa
 - The rest of the app on a release-signed build. Only phone login and Switch Role were tested on 6.22, and only rider
   approval and Switch Role on 6.23.
 - Simulation mode (non-manual checkout) does not sync real order status.
-- Switch Role from the **customer header** icon on the release build. The Driver and Restaurant Dashboard
-  entry points passed on 6.22; see the section above.
+- The 6.24 fixes on a release build (they were tested on a debug build; see "6.24 fixes" below).
 
 ## Known open items
 
 - Client order creation is still allowed by the rules (needed by older app builds). Once the version that uses
   `placeOrder` is what everyone has, change the `orders` create rule to `allow create: if false;`.
-- Admin "Users" tab: the "Current role" line doesn't refresh after a role change.
-- New restaurants get a hard-coded 5.0 rating (`BiteDashMainApp.kt`, restaurant setup).
-- Menu items come back in a different order after saving in Manage Menu.
-- "Start Preparing" button label wraps onto two lines.
-- Rejected/cancelled orders silently drop out of the customer's Tracking tab (History shows the raw status).
+- New restaurants get a hard-coded 5.0 rating (`BiteDashMainApp.kt`, restaurant setup). Deferred for now.
+
+## 6.24 fixes: all tested together on a device (debug build, 2026-10-03)
+
+One full run on the test phone with temporary customer, restaurant, rider and admin accounts. The run covered a menu,
+four cash orders (one delivered, three rejected), approval, and a role change. Unit tests pass and lint has no errors.
+**All test data was deleted afterwards**: 4 Auth users, their `users/` docs, the `drivers/` and `restaurants/` docs,
+3 `menu_items` and 4 `orders`. A re-check found none left.
+
+Fixed on Oct 2 (already in 6.22/6.23) but never tested on a device until now. All four pass:
+- Admin Users tab: "Current role" updates right after Apply Role Change (Customer → Restaurant → Customer).
+- Manage Menu keeps its order after Save (sorted by category, then name, the same as the customer's menu).
+  **New in 6.24:** a newly added item also goes straight into its sorted place, so the list no longer jumps on Save.
+- "Prepare" fits on one line.
+- A rejected/cancelled order no longer vanishes silently. **New in 6.24:** the Oct 2 fix only worked when the
+  customer had no other active order; with a second order in progress, Tracking silently switched to it. Now a
+  dismissible red banner ("BD Test Kitchen rejected one of your orders") shows above the other order. Tested by
+  rejecting an order while the customer watched Tracking.
+
+Other bugs found and fixed for 6.24:
+- **Cash orders said "Payment Confirmed! Mobile Money cleared successfully"**, although nothing had been paid. It
+  now says "Order Placed! … Pay the rider $X in USD cash when your food arrives".
+- **The order confirmation was never seen.** The app jumped straight to Tracking, so the confirmation popped up
+  later over the customer's *next* checkout instead. The customer now stays on it, and "Track Delivery" goes to
+  Tracking.
+- **Cash orders could be placed with "07" as the phone number** (the prefilled prefix), leaving the rider no way to
+  call. It now needs at least 9 digits, and checkout prefills the customer's profile phone, as it already did for the
+  address.
+- **Restaurant "Cancel" on a preparing order did nothing**: it was never connected. It now cancels the order
+  (`RestaurantOrderViewModel.cancelOrder`), and the customer gets the cancelled notice.
+- **Reject/Cancel acted on a single tap.** They now ask "Reject this order? … This can't be undone" first, with a
+  "Keep order" option.
+- **"Mark Ready for Pickup" wrapped onto two lines.** It is now "Ready". On the Dashboard tab, "Accept & Start Cook"
+  (it only accepts) is now "Accept" and "Mark Cooked & Ready" is now "Ready".
+- **History showed raw codes** like `READY_FOR_PICKUP`. It now shows "Ready for Pickup", with a red badge for
+  Rejected/Cancelled. "Paid with:" (on unpaid cash orders) is now "Payment:". The admin Orders tab also shows
+  readable statuses.
+- **"Navigate to Restaurant/Customer" always opened maps in the browser** on Android 11+, even with Google Maps
+  installed. It now opens the Maps app (tested), falling back to the browser.
+- Prices on rider and restaurant order cards are always formatted as `$2.00`, whatever the phone's language.
+- Smaller text fixes: the empty Tracking tab no longer lists every payment method except cash or mentions a "GPS
+  simulator". "How to use BiteDash as a administrator" now says "an administrator".
+
+Also tested in this run and working: sign-up for all four roles, restaurant setup and approval, the cash order from
+checkout through accept/prepare/ready, rider claim/pick-up/deliver (`COMPLETED` / `DELIVERED` in Firestore), rider
+approval moving the open screen on, and Switch Role from the customer header icon.
 
 ## Test data: cleaned up (2026-09-22)
 
@@ -172,8 +212,8 @@ No remaining `bd-test-*` accounts or data. `feature/pesepay` branch (see below) 
 
 The signed AAB is built by `.github/workflows/build-release-aab.yml` (manual run or a `release-*` tag) from the
 repository secrets `KEYSTORE_BASE64`, `STORE_PASSWORD`, `KEY_PASSWORD`, `PAYNOW_INTEGRATION_ID`,
-`PAYNOW_INTEGRATION_KEY`. `app/build.gradle.kts` is at `versionCode = 29` / `versionName = "6.23"`. The version code
-must be higher than the highest one already uploaded to Google Play (raise it if Play already has 29 or more).
+`PAYNOW_INTEGRATION_KEY`. `app/build.gradle.kts` is at `versionCode = 30` / `versionName = "6.24"` (the 6.24 fixes
+above; **not built yet**). The version code must be higher than the highest one already uploaded to Google Play (29).
 The latest release build is **6.23 (versionCode 29)**, made 2026-10-03 from `main` at commit `739fa87` (the PR #21
 merge; Actions run 37168645007, artifact `BiteDash-release-aab`). It adds the live rider-approval fix (PR #20) on top
 of 6.22. It is copied to `C:\Users\finge\Downloads\BiteDash-6.23-code29-release.aab` and is signed with the same

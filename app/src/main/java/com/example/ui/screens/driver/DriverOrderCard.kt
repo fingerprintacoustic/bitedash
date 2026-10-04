@@ -1,7 +1,10 @@
 package com.example.ui.screens.driver
 
+import android.content.ActivityNotFoundException
+import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.widget.Toast
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -266,17 +269,7 @@ private fun PickupLocation(order: DriverDeliveryOrder) {
         if (order.restaurantAddress.isNotBlank()) {
             Spacer(modifier = Modifier.height(8.dp))
             OutlinedButton(
-                onClick = {
-                    val uri = Uri.parse("geo:0,0?q=${Uri.encode(order.restaurantAddress)}")
-                    val mapIntent = Intent(Intent.ACTION_VIEW, uri)
-                    mapIntent.setPackage("com.google.android.apps.maps")
-                    if (mapIntent.resolveActivity(context.packageManager) != null) {
-                        context.startActivity(mapIntent)
-                    } else {
-                        val webUri = Uri.parse("https://maps.google.com/?q=${Uri.encode(order.restaurantAddress)}")
-                        context.startActivity(Intent(Intent.ACTION_VIEW, webUri))
-                    }
-                },
+                onClick = { openInMaps(context, order.restaurantAddress) },
                 modifier = Modifier.fillMaxWidth(),
                 colors = ButtonDefaults.outlinedButtonColors(
                     contentColor = MaterialTheme.colorScheme.primary
@@ -286,6 +279,29 @@ private fun PickupLocation(order: DriverDeliveryOrder) {
                 Spacer(modifier = Modifier.width(6.dp))
                 Text("Navigate to Restaurant")
             }
+        }
+    }
+}
+
+/**
+ * Opens [address] in the Google Maps app, falling back to maps in the browser.
+ *
+ * Tries the launch directly instead of checking resolveActivity() first: on
+ * Android 11+ that check returns null for Maps unless the manifest declares a
+ * <queries> entry, so riders were always sent to the browser even with Maps
+ * installed.
+ */
+private fun openInMaps(context: Context, address: String) {
+    val mapIntent = Intent(Intent.ACTION_VIEW, Uri.parse("geo:0,0?q=${Uri.encode(address)}"))
+        .setPackage("com.google.android.apps.maps")
+    try {
+        context.startActivity(mapIntent)
+    } catch (e: ActivityNotFoundException) {
+        val webUri = Uri.parse("https://maps.google.com/?q=${Uri.encode(address)}")
+        try {
+            context.startActivity(Intent(Intent.ACTION_VIEW, webUri))
+        } catch (e: ActivityNotFoundException) {
+            Toast.makeText(context, "No maps app or browser available", Toast.LENGTH_SHORT).show()
         }
     }
 }
@@ -351,18 +367,7 @@ private fun DeliveryLocation(order: DriverDeliveryOrder) {
         if (order.customerAddress.isNotBlank()) {
             Spacer(modifier = Modifier.height(8.dp))
             OutlinedButton(
-                onClick = {
-                    val uri = Uri.parse("geo:0,0?q=${Uri.encode(order.customerAddress)}")
-                    val mapIntent = Intent(Intent.ACTION_VIEW, uri)
-                    mapIntent.setPackage("com.google.android.apps.maps")
-                    if (mapIntent.resolveActivity(context.packageManager) != null) {
-                        context.startActivity(mapIntent)
-                    } else {
-                        // Fallback: open in browser maps
-                        val webUri = Uri.parse("https://maps.google.com/?q=${Uri.encode(order.customerAddress)}")
-                        context.startActivity(Intent(Intent.ACTION_VIEW, webUri))
-                    }
-                },
+                onClick = { openInMaps(context, order.customerAddress) },
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Icon(
@@ -424,7 +429,7 @@ private fun OrderSummary(order: DriverDeliveryOrder) {
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
             Text(
-                text = "$${String.format("%.2f", order.deliveryFee)}",
+                text = "$${String.format(Locale.US, "%.2f", order.deliveryFee)}",
                 style = MaterialTheme.typography.bodyMedium,
                 fontWeight = FontWeight.Medium,
                 color = MaterialTheme.colorScheme.primary
@@ -447,7 +452,7 @@ private fun OrderSummary(order: DriverDeliveryOrder) {
                     color = MaterialTheme.colorScheme.onSurface
                 )
                 Text(
-                    text = "$${String.format("%.2f", order.totalCost)}",
+                    text = "$${String.format(Locale.US, "%.2f", order.totalCost)}",
                     style = MaterialTheme.typography.bodyMedium,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.primary
@@ -512,7 +517,7 @@ private fun PayRestaurantReminder(order: DriverDeliveryOrder) {
             Spacer(modifier = Modifier.width(8.dp))
             Column {
                 Text(
-                    text = "Pay the restaurant $${String.format("%.2f", order.subtotal)} in cash before pickup",
+                    text = "Pay the restaurant $${String.format(Locale.US, "%.2f", order.subtotal)} in cash before pickup",
                     style = MaterialTheme.typography.bodyMedium,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onErrorContainer

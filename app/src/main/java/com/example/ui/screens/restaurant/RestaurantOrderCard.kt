@@ -19,6 +19,7 @@ import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Pending
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Restaurant
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -30,7 +31,12 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -98,6 +104,27 @@ fun RestaurantOrderCard(
             
             Spacer(modifier = Modifier.height(16.dp))
             
+            // Reject / Cancel can't be undone and the customer is told straight
+            // away, so they ask first instead of acting on a single (possibly
+            // accidental) tap. Holds the action waiting for confirmation.
+            var pendingEnd by remember(order.orderId) { mutableStateOf<(() -> Unit)?>(null) }
+            val endLabel = if (order.status == RestaurantOrderStatus.PREPARING) "Cancel" else "Reject"
+            pendingEnd?.let { action ->
+                AlertDialog(
+                    onDismissRequest = { pendingEnd = null },
+                    title = { Text("$endLabel this order?") },
+                    text = { Text("${order.customerName.ifBlank { "The customer" }} will be told their order was ${if (endLabel == "Cancel") "cancelled" else "rejected"}. This can't be undone.") },
+                    confirmButton = {
+                        TextButton(onClick = { pendingEnd = null; action() }) {
+                            Text("$endLabel order", color = MaterialTheme.colorScheme.error)
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { pendingEnd = null }) { Text("Keep order") }
+                    }
+                )
+            }
+
             // Action buttons based on order status
             when (order.status) {
                 RestaurantOrderStatus.PENDING_ACCEPTANCE, RestaurantOrderStatus.PAID -> {
@@ -108,21 +135,21 @@ fun RestaurantOrderCard(
                     ActionButtons(
                         isLoading = isLoading,
                         onAccept = onAccept,
-                        onReject = onReject
+                        onReject = { pendingEnd = onReject }
                     )
                 }
                 RestaurantOrderStatus.ACCEPTED -> {
                     PreparingActionButtons(
                         isLoading = isLoading,
                         onStartPreparing = onStartPreparing,
-                        onReject = onReject
+                        onReject = { pendingEnd = onReject }
                     )
                 }
                 RestaurantOrderStatus.PREPARING -> {
                     ReadyActionButtons(
                         isLoading = isLoading,
                         onMarkReady = onMarkReady,
-                        onCancel = onCancel
+                        onCancel = { pendingEnd = onCancel }
                     )
                 }
                 else -> {
@@ -349,7 +376,7 @@ private fun OrderItems(items: List<RestaurantOrderItem>) {
                     modifier = Modifier.weight(1f)
                 )
                 Text(
-                    text = "$${String.format("%.2f", item.price * item.quantity)}",
+                    text = "$${String.format(Locale.US, "%.2f", item.price * item.quantity)}",
                     style = MaterialTheme.typography.bodyMedium
                 )
             }
@@ -377,7 +404,7 @@ private fun OrderTotals(
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
             Text(
-                text = "$${String.format("%.2f", subtotal)}",
+                text = "$${String.format(Locale.US, "%.2f", subtotal)}",
                 style = MaterialTheme.typography.bodyMedium
             )
         }
@@ -394,7 +421,7 @@ private fun OrderTotals(
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
             Text(
-                text = "$${String.format("%.2f", deliveryFee)}",
+                text = "$${String.format(Locale.US, "%.2f", deliveryFee)}",
                 style = MaterialTheme.typography.bodyMedium
             )
         }
@@ -413,7 +440,7 @@ private fun OrderTotals(
                 fontWeight = FontWeight.Bold
             )
             Text(
-                text = "$${String.format("%.2f", total)}",
+                text = "$${String.format(Locale.US, "%.2f", total)}",
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.primary
@@ -581,7 +608,9 @@ private fun ReadyActionButtons(
                     modifier = Modifier.size(18.dp)
                 )
                 Spacer(modifier = Modifier.width(4.dp))
-                Text("Mark Ready for Pickup")
+                // Same half-width row as "Prepare": "Mark Ready for Pickup" wrapped
+                // onto two lines here.
+                Text("Ready", maxLines = 1)
             }
         }
     }
