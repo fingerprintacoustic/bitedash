@@ -304,6 +304,27 @@ class BiteDashViewModel(application: Application) : AndroidViewModel(application
 
     fun isMethodUnavailable(method: String): Boolean = method in checkoutSettings.value.unavailableMethods
 
+    // The signed-in customer's ratings (Firestore order ID -> stars), for History.
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+    val myRatings: StateFlow<Map<String, Int>> = authUid
+        .flatMapLatest { uid ->
+            if (uid == null) kotlinx.coroutines.flow.flowOf(emptyMap())
+            else firestoreService.getMyRatingsFlow(uid)
+        }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, emptyMap())
+
+    /** Rates a delivered order 1-5 stars; [onResult] gets false if it couldn't be saved. */
+    fun rateOrder(firestoreOrderId: String, stars: Int, onResult: (Boolean) -> Unit) {
+        val uid = com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.uid
+        if (uid == null || stars !in 1..5) {
+            onResult(false)
+            return
+        }
+        viewModelScope.launch {
+            onResult(firestoreService.submitRating(firestoreOrderId, uid, stars))
+        }
+    }
+
     // "EcoCash, InnBucks or cash on delivery", leaving out [excluding] and anything
     // switched off, for the "isn't available yet" messages.
     fun suggestedPaymentAlternatives(excluding: String): String {

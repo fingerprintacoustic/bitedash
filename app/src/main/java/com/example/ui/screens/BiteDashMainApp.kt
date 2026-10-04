@@ -619,7 +619,7 @@ fun RestaurantCard(restaurant: Restaurant, onClick: () -> Unit) {
                             modifier = Modifier.size(16.dp)
                         )
                         Text(
-                            text = "${restaurant.rating}",
+                            text = ratingLabel(restaurant.rating),
                             style = MaterialTheme.typography.bodyMedium,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.onSurface
@@ -804,7 +804,7 @@ fun RestaurantDetailScreen(restaurant: Restaurant, viewModel: BiteDashViewModel)
                             horizontalArrangement = Arrangement.spacedBy(4.dp)
                         ) {
                             Icon(Icons.Default.Star, contentDescription = "Rating", tint = Color(0xFFFFB300), modifier = Modifier.size(16.dp))
-                            Text("${restaurant.rating} / 5.0", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium)
+                            Text(if (restaurant.rating > 0.0) "${ratingLabel(restaurant.rating)} / 5.0" else "New, no ratings yet", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium)
                         }
                         Text(
                             text = "Loc: ${restaurant.location}",
@@ -2072,10 +2072,16 @@ private fun orderStatusLabel(status: String): String =
     com.example.ui.viewmodel.restaurant.RestaurantOrderStatus.entries
         .find { it.value == status }?.displayName ?: status
 
+// A restaurant's average customer rating ("4.6"), or "New" before its first rating.
+private fun ratingLabel(rating: Double): String =
+    if (rating > 0.0) String.format(Locale.US, "%.1f", rating) else "New"
+
 // HISTORY SCREEN
 @Composable
 fun HistoryScreen(viewModel: BiteDashViewModel) {
     val orderHistory by viewModel.orderHistory.collectAsStateWithLifecycle()
+    val myRatings by viewModel.myRatings.collectAsStateWithLifecycle()
+    var ratingOrderFor by remember { mutableStateOf<com.example.data.entity.OrderEntity?>(null) }
 
     if (orderHistory.isEmpty()) {
         Box(
@@ -2107,7 +2113,7 @@ fun HistoryScreen(viewModel: BiteDashViewModel) {
                     fontWeight = FontWeight.Bold
                 )
                 Text(
-                    text = "Place orders for local traditional plates or chicken buckets, and your full transaction records from EcoCash, InnBucks, OneMoney, O'Mari, and Bank Cards will populate securely in SQLite.",
+                    text = "Your past orders will show up here, where you can rate them or order the same food again.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = Color.Gray,
                     textAlign = TextAlign.Center
@@ -2245,11 +2251,108 @@ fun HistoryScreen(viewModel: BiteDashViewModel) {
                                 }
                             }
                         }
+
+                        // Delivered orders can be rated once; the rating feeds the
+                        // restaurant's average (see onRatingCreated).
+                        val firestoreId = order.firestoreOrderId
+                        if (order.status == "COMPLETED" && !firestoreId.isNullOrBlank()) {
+                            val myStars = myRatings[firestoreId]
+                            Divider(color = Color.LightGray.copy(alpha = 0.3f))
+                            if (myStars != null) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text("You rated this order ", style = MaterialTheme.typography.bodySmall, color = Color.Gray)
+                                    repeat(5) { i ->
+                                        Icon(
+                                            Icons.Default.Star,
+                                            contentDescription = null,
+                                            tint = if (i < myStars) Color(0xFFFFB300) else Color.LightGray,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                    }
+                                }
+                            } else {
+                                TextButton(
+                                    onClick = { ratingOrderFor = order },
+                                    modifier = Modifier.testTag("rate_button_${order.id}")
+                                ) {
+                                    Icon(Icons.Default.Star, contentDescription = null, tint = Color(0xFFFFB300), modifier = Modifier.size(18.dp))
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text("Rate ${order.restaurantName}")
+                                }
+                            }
+                        }
                     }
                 }
             }
         }
     }
+
+    ratingOrderFor?.let { order ->
+        RateOrderDialog(
+            restaurantName = order.restaurantName,
+            onDismiss = { ratingOrderFor = null },
+            onSubmit = { stars, onDone ->
+                viewModel.rateOrder(order.firestoreOrderId ?: "", stars) { ok ->
+                    onDone(ok)
+                    if (ok) ratingOrderFor = null
+                }
+            }
+        )
+    }
+}
+
+@Composable
+private fun RateOrderDialog(
+    restaurantName: String,
+    onDismiss: () -> Unit,
+    onSubmit: (stars: Int, onDone: (Boolean) -> Unit) -> Unit
+) {
+    var stars by remember { mutableStateOf(0) }
+    var submitting by remember { mutableStateOf(false) }
+    var failed by remember { mutableStateOf(false) }
+    AlertDialog(
+        onDismissRequest = { if (!submitting) onDismiss() },
+        title = { Text("Rate $restaurantName") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("How was your order?", style = MaterialTheme.typography.bodyMedium)
+                Row {
+                    for (i in 1..5) {
+                        IconButton(
+                            onClick = { stars = i },
+                            modifier = Modifier.testTag("rate_star_$i")
+                        ) {
+                            Icon(
+                                Icons.Default.Star,
+                                contentDescription = "$i star${if (i > 1) "s" else ""}",
+                                tint = if (i <= stars) Color(0xFFFFB300) else Color.LightGray,
+                                modifier = Modifier.size(36.dp)
+                            )
+                        }
+                    }
+                }
+                if (failed) {
+                    Text("Couldn't save your rating. Please try again.", color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = {
+                    submitting = true
+                    failed = false
+                    onSubmit(stars) { ok ->
+                        submitting = false
+                        failed = !ok
+                    }
+                },
+                enabled = stars > 0 && !submitting
+            ) { Text(if (submitting) "Saving…" else "Submit") }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss, enabled = !submitting) { Text("Not now") }
+        }
+    )
 }
 
 fun formatTimestamp(timestamp: Long): String {
@@ -3157,7 +3260,7 @@ fun AdminPortalOverlay(
                                                 id = "res_" + System.currentTimeMillis().toString(),
                                                 name = restName,
                                                 description = if (restDesc.isBlank()) "Delicious local meals delivered." else restDesc,
-                                                rating = 4.5,
+                                                rating = 0.0, // no customer ratings yet ("New"); was a made-up 4.5
                                                 deliveryTime = restTime,
                                                 deliveryFee = restFee.toDoubleOrNull() ?: 2.00,
                                                 category = restCat,
@@ -4093,7 +4196,7 @@ fun RoleSelectionGate(
                                                     id = "res_" + System.currentTimeMillis(),
                                                     name = setupName,
                                                     description = if (setupDesc.isBlank()) "Delicious local meals delivered." else setupDesc,
-                                                    rating = 5.0,
+                                                    rating = 0.0, // no customer ratings yet ("New"); was a made-up 5.0
                                                     deliveryTime = setupTime.ifBlank { "20-30 min" },
                                                     deliveryFee = setupFee.toDoubleOrNull() ?: 2.00,
                                                     category = setupCat,

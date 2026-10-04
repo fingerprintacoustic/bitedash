@@ -54,7 +54,12 @@ data class FirestoreRestaurant(
     val id: String = "",
     val name: String = "",
     val description: String = "",
+    // Legacy, hand-set rating that 6.23 and older still display. 6.24+ show avgRating.
     val rating: Double = 0.0,
+    // Real customer ratings, kept by the onRatingCreated Cloud Function (owners can't
+    // write these; see firestore.rules). 0 ratings = shown as "New".
+    val avgRating: Double = 0.0,
+    val ratingCount: Int = 0,
     val deliveryTime: String = "",
     val deliveryFee: Double = 0.0,
     val category: String = "",

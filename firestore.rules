@@ -98,14 +98,21 @@ service cloud.firestore {
       // real restaurant signups almost never got that far to notice.
       // isApproved must be false on self-create — same reasoning as the
       // driver create rule above, so a client can't just self-approve.
+      // A new listing also starts with no customer ratings (avgRating /
+      // ratingCount / ratingSum are kept by the onRatingCreated function).
       allow create: if isAuthenticated() &&
         request.resource.data.ownerUserId == request.auth.uid &&
-        request.resource.data.isApproved == false;
+        request.resource.data.isApproved == false &&
+        request.resource.data.get('avgRating', 0) == 0 &&
+        request.resource.data.get('ratingCount', 0) == 0 &&
+        request.resource.data.get('ratingSum', 0) == 0;
 
       // Restaurant owners can update anything on their own restaurant except
       // isApproved. Staff (added by the owner via staffEmails) can update
       // everything except who owns the restaurant, who else has staff access
-      // (only the owner manages that) and isApproved.
+      // (only the owner manages that) and isApproved. Neither can touch the
+      // customer-rating fields, which only the onRatingCreated function writes
+      // (it uses the Admin SDK, which bypasses these rules).
       //
       // isApproved is the admin review gate: the create rule above forces it to
       // false, and only an admin (rule below) may flip it. Without excluding it
@@ -115,11 +122,11 @@ service cloud.firestore {
       allow update: if isAuthenticated() && (
         (
           resource.data.ownerUserId == request.auth.uid &&
-          !request.resource.data.diff(resource.data).affectedKeys().hasAny(['isApproved'])
+          !request.resource.data.diff(resource.data).affectedKeys().hasAny(['isApproved', 'avgRating', 'ratingCount', 'ratingSum'])
         ) ||
         (
           isRestaurantOwnerOrStaff(restaurantId) &&
-          !request.resource.data.diff(resource.data).affectedKeys().hasAny(['ownerUserId', 'staffEmails', 'isApproved'])
+          !request.resource.data.diff(resource.data).affectedKeys().hasAny(['ownerUserId', 'staffEmails', 'isApproved', 'avgRating', 'ratingCount', 'ratingSum'])
         )
       );
       
@@ -327,6 +334,30 @@ service cloud.firestore {
       // nothing sensitive here.
       allow read: if isAuthenticated();
       allow write: if isAdmin();
+    }
+
+    // ==================== RATINGS ====================
+
+    match /ratings/{orderId} {
+      // One rating per delivered order, by the customer who placed it. The
+      // document ID is the order ID and ratings can't be updated, so a second
+      // rating for the same order is rejected. The onRatingCreated function
+      // adds it to the restaurant's avgRating / ratingCount.
+      allow create: if isAuthenticated() &&
+        request.resource.data.keys().hasOnly(['orderId', 'userId', 'stars', 'createdAt']) &&
+        request.resource.data.orderId == orderId &&
+        request.resource.data.userId == request.auth.uid &&
+        request.resource.data.stars is int &&
+        request.resource.data.stars >= 1 && request.resource.data.stars <= 5 &&
+        exists(/databases/$(database)/documents/orders/$(orderId)) &&
+        get(/databases/$(database)/documents/orders/$(orderId)).data.userId == request.auth.uid &&
+        get(/databases/$(database)/documents/orders/$(orderId)).data.status == 'COMPLETED';
+
+      // A customer reads their own ratings (to know which orders they've rated).
+      allow read: if isAuthenticated() &&
+        (resource.data.userId == request.auth.uid || isAdmin());
+
+      allow update, delete: if false;
     }
 
     // ==================== ADMIN SETTINGS ====================
