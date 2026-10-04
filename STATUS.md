@@ -1,6 +1,6 @@
 # BiteDash status
 
-Last updated: 2026-10-03. Firebase project: `bitedash-1e078`. Branch: `main` (everything below is pushed).
+Last updated: 2026-10-04. Firebase project: `bitedash-1e078`. Branch: `main` (everything below is pushed).
 
 ## Deployed to production (matches `main`)
 
@@ -263,9 +263,16 @@ No remaining `bd-test-*` accounts or data. `feature/pesepay` branch (see below) 
 
 The signed AAB is built by `.github/workflows/build-release-aab.yml` (manual run or a `release-*` tag) from the
 repository secrets `KEYSTORE_BASE64`, `STORE_PASSWORD`, `KEY_PASSWORD`, `PAYNOW_INTEGRATION_ID`,
-`PAYNOW_INTEGRATION_KEY`. `app/build.gradle.kts` is at `versionCode = 30` / `versionName = "6.24"` (the 6.24 fixes
-above; **not built yet**). The version code must be higher than the highest one already uploaded to Google Play (29).
-The latest release build is **6.23 (versionCode 29)**, made 2026-10-03 from `main` at commit `739fa87` (the PR #21
+`PAYNOW_INTEGRATION_KEY`. `app/build.gradle.kts` is at `versionCode = 30` / `versionName = "6.24"`.
+
+**6.24 (versionCode 30) is built but not uploaded yet** (checked in the Play Console 2026-10-04: the highest bundle
+there is 29, and the closed track has an empty draft). It was built from `main` at commit `b2a47b3` (the PR #27 merge,
+so it has the 6.24 fixes, the Firestore checkout settings and customer ratings; Actions run 37207840182). The copy in
+`C:\Users\finge\Downloads\BiteDash-6.24-code30-release.aab` is byte-identical to that run's artifact (SHA-256
+`896bb90c…0c0cfa`). The two earlier 6.24 runs (37177228835, 37202818135) are older builds with the same version code;
+don't upload those.
+
+The latest build on Play is **6.23 (versionCode 29)**, made 2026-10-03 from `main` at commit `739fa87` (the PR #21
 merge; Actions run 37168645007, artifact `BiteDash-release-aab`). It adds the live rider-approval fix (PR #20) on top
 of 6.22. It is copied to `C:\Users\finge\Downloads\BiteDash-6.23-code29-release.aab` and is signed with the same
 upload certificate as 6.22 (CN=Fingerprint Acoustic), not the debug key. It was **uploaded straight to closed
