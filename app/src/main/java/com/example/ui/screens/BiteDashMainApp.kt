@@ -947,6 +947,7 @@ fun CartScreen(viewModel: BiteDashViewModel) {
     val paymentStep by viewModel.paymentStep.collectAsStateWithLifecycle()
     val selectedRestaurant by viewModel.selectedRestaurant.collectAsStateWithLifecycle()
     val driverTip by viewModel.driverTip.collectAsStateWithLifecycle()
+    val checkoutSettings by viewModel.checkoutSettings.collectAsStateWithLifecycle()
 
     LaunchedEffect(Unit) {
         viewModel.loadDeliveryAddressDefaultIfBlank()
@@ -1165,13 +1166,16 @@ fun CartScreen(viewModel: BiteDashViewModel) {
                                     style = MaterialTheme.typography.titleMedium,
                                     color = MaterialTheme.colorScheme.primary
                                 )
-                                // Interactive display matching Zimbabwe multi-currency context
-                                val mockZigRate = 22.0
-                                Text(
-                                    text = "≈ ZiG ${String.format(Locale.US, "%.2f", totalBill * mockZigRate)}",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = Color.Gray
-                                )
+                                // ZiG equivalent, using the rate an admin sets in Firestore
+                                // (public_settings/checkout.zigPerUsd). Hidden until a rate is
+                                // set; this used a made-up, hard-coded 22.0 before.
+                                if (checkoutSettings.zigPerUsd > 0.0) {
+                                    Text(
+                                        text = "≈ ZiG ${String.format(Locale.US, "%.2f", totalBill * checkoutSettings.zigPerUsd)}",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = Color.Gray
+                                    )
+                                }
                             }
                         }
                     }
@@ -1285,9 +1289,13 @@ fun CartScreen(viewModel: BiteDashViewModel) {
                     "Telecash" -> "e.g. 0731234567"
                     else -> "e.g. 0771234567"
                 }
-                val isManualWallet = checkoutMethod in viewModel.manualPaymentMethods
+                val isManualWallet = !checkoutSettings.paynowLive && checkoutMethod in viewModel.manualPaymentMethods
                 val merchantLabel = when {
                     checkoutMethod == "USD Cash" -> "Cash On Delivery (COD) - Pay driver in physical USD cash"
+                    // Checked before the per-channel lines below, so any channel switched
+                    // off in public_settings/checkout says so instead of describing a flow
+                    // the pay button won't allow.
+                    checkoutMethod in checkoutSettings.unavailableMethods -> "Not available yet"
                     isManualWallet -> "Send the payment yourself, then tell us the reference below"
                     // Every online channel is paid on Paynow's own secure page (the server
                     // starts a Paynow hosted checkout), not through a separate gateway per
@@ -1295,7 +1303,6 @@ fun CartScreen(viewModel: BiteDashViewModel) {
                     // Mobile money is approved on the customer's own phone, all inside BiteDash.
                     checkoutMethod == "EcoCash" || checkoutMethod == "OneMoney" -> "You'll get a prompt on your phone to approve this payment"
                     checkoutMethod == "InnBucks" -> "You'll get a code to approve in the InnBucks app"
-                    checkoutMethod in viewModel.unavailableCheckoutMethods -> "Not available yet"
                     else -> "You'll finish this payment on Paynow's secure payment page"
                 }
 
@@ -1390,10 +1397,10 @@ fun CartScreen(viewModel: BiteDashViewModel) {
                             )
                         }
 
-                        val methodUnavailable = checkoutMethod in viewModel.unavailableCheckoutMethods
+                        val methodUnavailable = checkoutMethod in checkoutSettings.unavailableMethods
                         if (methodUnavailable) {
                             Text(
-                                "$checkoutMethod payments aren't available yet. Please choose EcoCash, InnBucks or USD Cash to place your order.",
+                                "$checkoutMethod payments aren't available yet. Please choose ${viewModel.suggestedPaymentAlternatives(checkoutMethod)} to place your order.",
                                 color = MaterialTheme.colorScheme.error,
                                 style = MaterialTheme.typography.bodySmall,
                                 modifier = Modifier.testTag("method_unavailable_notice")
@@ -3723,7 +3730,6 @@ fun RoleSelectionGate(
     cameFromSwitchRole: Boolean = false
 ) {
     val restaurants by viewModel.restaurantsState.collectAsStateWithLifecycle()
-    val isManualMode by viewModel.isManualMode.collectAsStateWithLifecycle()
     
     // Check if user is authenticated and use their role
     val isAuthenticated = authViewModel?.isAuthenticated() == true
@@ -3889,42 +3895,15 @@ fun RoleSelectionGate(
                 0 -> {
                     // CUSTOMER ROLE
                     Text(
-                        text = "Access standard customer marketplace to browse restaurants, add road runners or pizzas to cart, select carrier payment integration, and track deliveries.",
+                        text = "Browse restaurants, order food, pay by mobile money or cash on delivery, and track your order to your door.",
                         style = MaterialTheme.typography.bodySmall,
                         color = Color.Gray,
                         textAlign = TextAlign.Center
                     )
 
-                    // Manual simulation toggle
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.2f))
-                            .clickable { viewModel.setCheckoutModeIsManual(!isManualMode) }
-                            .padding(12.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        Checkbox(
-                            checked = isManualMode,
-                            onCheckedChange = { viewModel.setCheckoutModeIsManual(it) }
-                        )
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                "Manual Multi-Role Mode",
-                                style = MaterialTheme.typography.labelMedium,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.primary
-                            )
-                            Text(
-                                "Allows you to manually accept and dispatch orders as restaurant and driver from their dashboards. Recommend leaving checked!",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = Color.Gray,
-                                fontSize = 10.sp
-                            )
-                        }
-                    }
+                    // There used to be a "Manual Multi-Role Mode" checkbox here. Unticking
+                    // it made a customer's real order show a fake, simulated delivery on
+                    // Tracking, so it's gone: real orders always follow their real status.
 
                     Button(
                         onClick = { viewModel.setProfile(UserProfile.Customer) },
@@ -5330,7 +5309,7 @@ private fun AdminOrdersTab(viewModel: BiteDashViewModel) {
 }
 
 /**
- * Manual mobile-money: while Paynow isn't live (see BiteDashViewModel.PAYNOW_LIVE), a
+ * Manual mobile-money: while Paynow isn't live (public_settings/checkout.paynowLive), a
  * customer sends EcoCash/OneMoney/InnBucks/Telecash/O'Mari payment straight to the
  * business's own number and reports the reference at checkout. Here an admin checks
  * that transfer actually landed before the restaurant ever sees the order, and sets
