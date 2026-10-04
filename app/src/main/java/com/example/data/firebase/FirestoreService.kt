@@ -7,6 +7,7 @@ import com.google.firebase.firestore.Query
 import com.google.firebase.firestore.SetOptions
 import com.google.firebase.firestore.snapshots
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.tasks.await
 
@@ -829,6 +830,17 @@ class FirestoreService {
             .whereEqualTo("isAvailable", true)
             .snapshots()
             .map { snapshot -> snapshot.toObjects(FirestoreDriver::class.java) }
+    }
+
+    // Live version of getDriver(): emits again whenever the document changes,
+    // e.g. when an admin approves a pending rider. Emits null if the document
+    // doesn't exist or can't be read.
+    fun getDriverFlow(driverId: String): Flow<FirestoreDriver?> {
+        return db.collection(COLLECTION_DRIVERS)
+            .document(driverId)
+            .snapshots()
+            .map { it.toObject(FirestoreDriver::class.java) }
+            .catch { emit(null) }
     }
 
     suspend fun getDriver(driverId: String): FirestoreDriver? {

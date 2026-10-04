@@ -37,9 +37,14 @@ app and approved in Firestore, and the app was force-stopped and reopened before
 **Test accounts removed afterwards:** both Auth users, both `users/` docs, the `drivers/` doc and the `restaurants/`
 doc were deleted, and none of them exist anymore. No menu items or orders were created.
 
-Side note: right after the driver was approved in Firestore, the open "Registration Submitted / awaiting admin
-approval" screen still showed a few seconds later. The dashboard only appeared after the app was reopened.
-This was seen once and not investigated.
+Side note: on 6.22, a rider waiting on the "Registration Submitted / awaiting admin approval" screen is not moved on
+when an admin approves them. The dashboard only appears after the app is reopened. The cause was that the Rider tab
+read `drivers/{uid}` once instead of listening to it. **Fixed on `main` (not yet in a release build):** the tab now
+uses `FirestoreService.getDriverFlow()`. Verified on a debug build (2026-10-03): a temporary driver was approved in
+Firestore while that screen was open, and within 3 s it moved on to the rider guide and then the Driver Dashboard,
+with no restart. Switch Role still stayed on the role screen afterwards. The temporary account was deleted (Auth
+user, `users/` and `drivers/` docs).
+Restaurants were not affected: their tab already uses the live `restaurantsState` listener.
 
 ## Phone/SMS (OTP) login: verified on the 6.22 release build (2026-10-03)
 
