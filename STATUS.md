@@ -14,8 +14,9 @@ Last updated: 2026-10-05. Firebase project: `bitedash-1e078`. Branch: `main` (ev
   All six run on **Node.js 22** since 2026-10-05 (moved off Node.js 20, which is decommissioned on 2026-10-30;
   PR #32). They were deployed with `functions/.env` loaded. Checked afterwards: `functions:list` shows `nodejs22` for
   all six, `paynowReturn` answers HTTP 200, and the logs show no new errors. The only entries were GETs to `placeOrder`
-  during the rollout, which callables reject. The app flows (placing an order, a Paynow payment) have not been rerun
-  on Node 22.
+  during the rollout, which callables reject. The same phone test was rerun on Node 22 the same evening and
+  passed: `placeOrder`, then an EcoCash express payment ($5.50, 0771111111). Payment `PAID`, order `paymentStatus PAID`,
+  `paymentRef` 64077187, no errors in the logs.
 
 ## App behaviour verified on a device (debug build)
 
@@ -167,8 +168,10 @@ and number typed in the app are not sent to Paynow; the customer picks how to pa
 ## Not verified
 
 - A completed **live-mode** Paynow payment (real money) and its webhook. Test-mode EcoCash express payments are
-  verified (2026-09-21, and again 2026-10-05 with the new keys). OneMoney, InnBucks and card payments are not. Nobody
-  checked whether the webhook or the app's status poll marked the test payment paid.
+  verified (2026-09-21, and again 2026-10-05 with the new keys). OneMoney, InnBucks and card payments are not. In the Node 22
+  test, Paynow did call `paynowResultWebhook` (23:49:42 UTC). The payment's `completedAt` (23:49:44) falls between
+  that call and the app's next status poll (23:49:47), so the webhook most likely marked it paid. That isn't proven:
+  the function doesn't log which path wrote the status.
 - The rest of the app on a release-signed build. Only phone login and Switch Role were tested on 6.22, and only rider
   approval and Switch Role on 6.23.
 - Simulation mode: from 6.24 customers can no longer switch it on (the "Manual Multi-Role Mode" checkbox is gone), so
