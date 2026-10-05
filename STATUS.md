@@ -11,6 +11,11 @@ Last updated: 2026-10-05. Firebase project: `bitedash-1e078`. Branch: `main` (ev
 - **Cloud Functions** (`functions/`, us-central1): `initiatePaynowPayment`, `checkPaynowPaymentStatus`,
   `paynowResultWebhook`, `paynowReturn`, **`placeOrder`** (prices an order server-side from Firestore), and
   **`onRatingCreated`** (deployed 2026-10-04; the project's first Firestore-triggered, 2nd-gen event function).
+  All six run on **Node.js 22** since 2026-10-05 (moved off Node.js 20, which is decommissioned on 2026-10-30;
+  PR #32). They were deployed with `functions/.env` loaded. Checked afterwards: `functions:list` shows `nodejs22` for
+  all six, `paynowReturn` answers HTTP 200, and the logs show no new errors. The only entries were GETs to `placeOrder`
+  during the rollout, which callables reject. The app flows (placing an order, a Paynow payment) have not been rerun
+  on Node 22.
 
 ## App behaviour verified on a device (debug build)
 
@@ -172,9 +177,6 @@ and number typed in the app are not sent to Paynow; the customer picks how to pa
 
 ## Known open items
 
-- **Cloud Functions run on Node.js 20, which Google decommissions on 2026-10-30.** After that date the functions
-  can't be deployed until they move to a newer Node.js version (`engines.node` in `functions/package.json`) and every
-  function is redeployed and retested. The 2026-10-05 deploy warned about this.
 - Client order creation is still allowed by the rules (needed by older app builds). Once the version that uses
   `placeOrder` is what everyone has, change the `orders` create rule to `allow create: if false;`.
 
