@@ -104,6 +104,17 @@ restaurant cannot see an unconfirmed order.
 - Test mode only accepts the merchant login email as payer, supplied by the git-ignored `functions/.env`
   (`PAYNOW_AUTH_EMAIL_OVERRIDE`). **Delete that file and redeploy `initiatePaynowPayment` when Paynow sets the
   integration live**, otherwise every customer payment would use the merchant email.
+- **Deploy `initiatePaynowPayment` only from a checkout that has `functions/.env`.** The CLI prints "Loaded
+  environment variables from functions\.env" when it's there. A deploy without the file silently drops the override.
+  That happened on 2026-10-05, when Shaddy's new keys (secret version 3) were deployed. After that deploy every express
+  payment failed with "The integration ID is in test mode, so if authemail is specified then it must match the
+  merchants registered email address", because the customer's own email was sent instead.
+- 2026-10-05: re-verified with the **new keys** after `initiatePaynowPayment` was redeployed with `functions/.env`.
+  The test used a debug build on the Samsung and a temporary customer account: an EcoCash checkout with 0771111111
+  ($5.50). The app showed "Payment Confirmed!". The payment record was `PAID` (mode express, `completedAt` set) and the
+  order was `paymentStatus PAID` with `paymentRef` 64076825 (Paynow's reference). `paynowLive` was `true` only during
+  the test (about 5 minutes) and is back to `false`. The admin deletes the test orders, payment and accounts by hand
+  in the console.
 - Enabled on the Paynow account (USD only): EcoCash, Zimswitch, PayGo, InnBucks, Internet/Mobile Banking, POS2U.
   Visa/Mastercard are inactive (need business verification). OneMoney and Telecash exist only as ZWG (unticked).
   Do not tick ZWG methods: the app sends USD amounts.
@@ -150,7 +161,9 @@ and number typed in the app are not sent to Paynow; the customer picks how to pa
 
 ## Not verified
 
-- A completed Paynow payment (EcoCash / OneMoney / InnBucks / card) and its webhook.
+- A completed **live-mode** Paynow payment (real money) and its webhook. Test-mode EcoCash express payments are
+  verified (2026-09-21, and again 2026-10-05 with the new keys). OneMoney, InnBucks and card payments are not. Nobody
+  checked whether the webhook or the app's status poll marked the test payment paid.
 - The rest of the app on a release-signed build. Only phone login and Switch Role were tested on 6.22, and only rider
   approval and Switch Role on 6.23.
 - Simulation mode: from 6.24 customers can no longer switch it on (the "Manual Multi-Role Mode" checkbox is gone), so
@@ -159,6 +172,9 @@ and number typed in the app are not sent to Paynow; the customer picks how to pa
 
 ## Known open items
 
+- **Cloud Functions run on Node.js 20, which Google decommissions on 2026-10-30.** After that date the functions
+  can't be deployed until they move to a newer Node.js version (`engines.node` in `functions/package.json`) and every
+  function is redeployed and retested. The 2026-10-05 deploy warned about this.
 - Client order creation is still allowed by the rules (needed by older app builds). Once the version that uses
   `placeOrder` is what everyone has, change the `orders` create rule to `allow create: if false;`.
 
