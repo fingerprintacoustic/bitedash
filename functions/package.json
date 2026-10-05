@@ -5,7 +5,7 @@
   "description": "Server-side Paynow integration for BiteDash (payment initiation, status verification, and the Paynow result webhook).",
   "main": "lib/index.js",
   "engines": {
-    "node": "20"
+    "node": "22"
   },
   "scripts": {
     "build": "tsc",
