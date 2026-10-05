@@ -1,6 +1,6 @@
 # BiteDash status
 
-Last updated: 2026-10-03. Firebase project: `bitedash-1e078`. Branch: `main` (everything below is pushed).
+Last updated: 2026-10-04. Firebase project: `bitedash-1e078`. Branch: `main` (everything below is pushed).
 
 ## Deployed to production (matches `main`)
 
@@ -90,8 +90,8 @@ An admin checks the number and confirms in the new **Manual Pay** tab of the Adm
 sees the order (same "hide until paid" pattern as online orders). From **6.24** this is controlled from Firestore,
 not the app code (see **Checkout settings** below): set `paynowLive` to `true` once Paynow is live to return these
 five methods to the normal automatic Paynow flow, with no new app version. (6.23 and older have it hard-coded off.)
-Set the receiving numbers in Manual Pay before
-relying on this (nothing is pre-filled). Verified end to end on a device and over REST, including that the
+Receiving numbers are set (`public_settings/payment`, entered by the admin 2026-09-22; checked 2026-10-04):
+EcoCash, InnBucks, O'Mari and Telecash 0772673352, OneMoney 0712592526. Verified end to end on a device and over REST, including that the
 restaurant cannot see an unconfirmed order.
 
 ## Online payments (Paynow): EcoCash express checkout verified in TEST mode
@@ -249,8 +249,8 @@ All `bd-test-*` test data has been removed from the production Firebase project:
   verified an unauthenticated read of its document is now refused (403), same as it would be for any other hidden
   restaurant. Its 2 `menu_items` deleted.
 - Both test `drivers/` documents, all 16 test `orders/`, and 3 `payments/` records deleted.
-- `public_settings/payment` (the manual-payment receiving numbers) is empty — nothing pre-filled; an admin must
-  enter real numbers before manual mobile-money payments are actually usable by customers.
+- `public_settings/payment` (the manual-payment receiving numbers) was left empty by the cleanup; the admin entered
+  the real numbers later the same day (see **Manual mobile-money payments**).
 
 No remaining `bd-test-*` accounts or data. `feature/pesepay` branch (see below) is unaffected — it has no commits.
 
@@ -263,9 +263,17 @@ No remaining `bd-test-*` accounts or data. `feature/pesepay` branch (see below) 
 
 The signed AAB is built by `.github/workflows/build-release-aab.yml` (manual run or a `release-*` tag) from the
 repository secrets `KEYSTORE_BASE64`, `STORE_PASSWORD`, `KEY_PASSWORD`, `PAYNOW_INTEGRATION_ID`,
-`PAYNOW_INTEGRATION_KEY`. `app/build.gradle.kts` is at `versionCode = 30` / `versionName = "6.24"` (the 6.24 fixes
-above; **not built yet**). The version code must be higher than the highest one already uploaded to Google Play (29).
-The latest release build is **6.23 (versionCode 29)**, made 2026-10-03 from `main` at commit `739fa87` (the PR #21
+`PAYNOW_INTEGRATION_KEY`. `app/build.gradle.kts` is at `versionCode = 31` / `versionName = "6.24"`.
+
+**6.24 (versionCode 31) is built, ready to upload to closed testing.** Built 2026-10-04 from `main` at commit
+`b07f438` (the PR #29 merge; Actions run 37252175110), signed with the upload key (CN=Fingerprint Acoustic). It has
+the 6.24 fixes, the Firestore checkout settings and customer ratings. Copied to
+`C:\Users\finge\Downloads\BiteDash-6.24-code31-release.aab` (SHA-256 `5d5d10ea…f36217`).
+Why 31: the Play Console refused versionCode 30 as "already used", although no bundle 30 was listed (a code stays
+used once a bundle with it has been uploaded, even if it's removed from a draft). **Never reuse 30**; the 6.24
+code-30 builds (runs 37177228835, 37202818135, 37207840182) can't be uploaded.
+
+The latest build on Play is **6.23 (versionCode 29)**, made 2026-10-03 from `main` at commit `739fa87` (the PR #21
 merge; Actions run 37168645007, artifact `BiteDash-release-aab`). It adds the live rider-approval fix (PR #20) on top
 of 6.22. It is copied to `C:\Users\finge\Downloads\BiteDash-6.23-code29-release.aab` and is signed with the same
 upload certificate as 6.22 (CN=Fingerprint Acoustic), not the debug key. It was **uploaded straight to closed
