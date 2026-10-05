@@ -1,6 +1,6 @@
 # BiteDash status
 
-Last updated: 2026-10-04. Firebase project: `bitedash-1e078`. Branch: `main` (everything below is pushed).
+Last updated: 2026-10-05. Firebase project: `bitedash-1e078`. Branch: `main` (everything below is pushed).
 
 ## Deployed to production (matches `main`)
 
@@ -265,23 +265,24 @@ The signed AAB is built by `.github/workflows/build-release-aab.yml` (manual run
 repository secrets `KEYSTORE_BASE64`, `STORE_PASSWORD`, `KEY_PASSWORD`, `PAYNOW_INTEGRATION_ID`,
 `PAYNOW_INTEGRATION_KEY`. `app/build.gradle.kts` is at `versionCode = 31` / `versionName = "6.24"`.
 
-**6.24 (versionCode 31) is built, ready to upload to closed testing.** Built 2026-10-04 from `main` at commit
+**6.24 (versionCode 31) is uploaded to closed testing**, replacing 6.23. Built 2026-10-04 from `main` at commit
 `b07f438` (the PR #29 merge; Actions run 37252175110), signed with the upload key (CN=Fingerprint Acoustic). It has
 the 6.24 fixes, the Firestore checkout settings and customer ratings. Copied to
 `C:\Users\finge\Downloads\BiteDash-6.24-code31-release.aab` (SHA-256 `5d5d10ea…f36217`).
 Why 31: the Play Console refused versionCode 30 as "already used", although no bundle 30 was listed (a code stays
 used once a bundle with it has been uploaded, even if it's removed from a draft). **Never reuse 30**; the 6.24
 code-30 builds (runs 37177228835, 37202818135, 37207840182) can't be uploaded.
+**Not yet tap-tested on the installed release build** — only on a debug build and over REST so far (see "Not
+verified" above); that's still the thing to do once a device picks up the update from Play.
 
-The latest build on Play is **6.23 (versionCode 29)**, made 2026-10-03 from `main` at commit `739fa87` (the PR #21
-merge; Actions run 37168645007, artifact `BiteDash-release-aab`). It adds the live rider-approval fix (PR #20) on top
-of 6.22. It is copied to `C:\Users\finge\Downloads\BiteDash-6.23-code29-release.aab` and is signed with the same
-upload certificate as 6.22 (CN=Fingerprint Acoustic), not the debug key. It was **uploaded straight to closed
-testing** on 2026-10-03 at 9:42 PM, skipping internal testing. Uploading is done by hand in the Play Console:
-the AAB is too large for browser automation, and there is no Play publishing API set up. The previous build, 6.22
-(versionCode 28, commit `cd92a1f`, run 37151661448), is still in Downloads.
+6.23 (versionCode 29) was the previous closed-testing build, made 2026-10-03 from `main` at commit `739fa87` (the
+PR #21 merge; Actions run 37168645007, artifact `BiteDash-release-aab`). It is copied to
+`C:\Users\finge\Downloads\BiteDash-6.23-code29-release.aab` and is signed with the same upload certificate as 6.22
+(CN=Fingerprint Acoustic), not the debug key. Uploading is done by hand in the Play Console: the AAB is too large for
+browser automation, and there is no Play publishing API set up. 6.22 (versionCode 28, commit `cd92a1f`, run
+37151661448) is also still in Downloads.
 
-### Google Play tracks (as of 2026-10-03)
+### Google Play tracks (as of 2026-10-04)
 
 - **No production release yet.** The app is in **closed testing**. As a new personal developer account, it needs
   at least **12 testers opted in to the closed test for 14 days in a row** before production access can be
@@ -289,11 +290,9 @@ the AAB is too large for browser automation, and there is no Play publishing API
 - **Internal testing:** 6.22 (versionCode 28) was tested from here, and phone login was verified on it, installed from
   Play. The Play Console's "Latest releases" overview (checked 2026-10-03) lists internal testing as release
   `0.0.0.4` (versionCode 4, Jun 24, 2026), so 6.22 may no longer be the release shown on that track.
-- **Closed testing ("Bitedash tester" track):** **6.23 (versionCode 29)**, "Available to testers on Google Play", full
-  rollout, uploaded directly on 2026-10-03 at 9:42 PM. It replaces 6.22, which had been promoted from internal testing
-  earlier that day (and which had replaced 6.21). The test phone was offered the update in the Play Store right away
-  and installed 6.23 from Play. The rider-approval fix and Switch Role passed on that install (see above). Play
-  updates testers automatically, or they can tap Update on the BiteDash page in the Play Store.
+- **Closed testing ("Bitedash tester" track):** **6.24 (versionCode 31)** uploaded 2026-10-04, replacing 6.23. Play
+  updates testers automatically, or they can tap Update on the BiteDash page in the Play Store. Not yet confirmed
+  installed/verified from this track (6.23 was, on 2026-10-03 — see **Switch Role** above for that pass).
 - Once production access is granted, promote the newest tested build to production.
 
 ## Branches
