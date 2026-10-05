@@ -11,6 +11,12 @@ Last updated: 2026-10-05. Firebase project: `bitedash-1e078`. Branch: `main` (ev
 - **Cloud Functions** (`functions/`, us-central1): `initiatePaynowPayment`, `checkPaynowPaymentStatus`,
   `paynowResultWebhook`, `paynowReturn`, **`placeOrder`** (prices an order server-side from Firestore), and
   **`onRatingCreated`** (deployed 2026-10-04; the project's first Firestore-triggered, 2nd-gen event function).
+  All six run on **Node.js 22** since 2026-10-05 (moved off Node.js 20, which is decommissioned on 2026-10-30;
+  PR #32). They were deployed with `functions/.env` loaded. Checked afterwards: `functions:list` shows `nodejs22` for
+  all six, `paynowReturn` answers HTTP 200, and the logs show no new errors. The only entries were GETs to `placeOrder`
+  during the rollout, which callables reject. The same phone test was rerun on Node 22 the same evening and
+  passed: `placeOrder`, then an EcoCash express payment ($5.50, 0771111111). Payment `PAID`, order `paymentStatus PAID`,
+  `paymentRef` 64077187, no errors in the logs.
 
 ## App behaviour verified on a device (debug build)
 
@@ -104,6 +110,17 @@ restaurant cannot see an unconfirmed order.
 - Test mode only accepts the merchant login email as payer, supplied by the git-ignored `functions/.env`
   (`PAYNOW_AUTH_EMAIL_OVERRIDE`). **Delete that file and redeploy `initiatePaynowPayment` when Paynow sets the
   integration live**, otherwise every customer payment would use the merchant email.
+- **Deploy `initiatePaynowPayment` only from a checkout that has `functions/.env`.** The CLI prints "Loaded
+  environment variables from functions\.env" when it's there. A deploy without the file silently drops the override.
+  That happened on 2026-10-05, when Shaddy's new keys (secret version 3) were deployed. After that deploy every express
+  payment failed with "The integration ID is in test mode, so if authemail is specified then it must match the
+  merchants registered email address", because the customer's own email was sent instead.
+- 2026-10-05: re-verified with the **new keys** after `initiatePaynowPayment` was redeployed with `functions/.env`.
+  The test used a debug build on the Samsung and a temporary customer account: an EcoCash checkout with 0771111111
+  ($5.50). The app showed "Payment Confirmed!". The payment record was `PAID` (mode express, `completedAt` set) and the
+  order was `paymentStatus PAID` with `paymentRef` 64076825 (Paynow's reference). `paynowLive` was `true` only during
+  the test (about 5 minutes) and is back to `false`. The admin deletes the test orders, payment and accounts by hand
+  in the console.
 - Enabled on the Paynow account (USD only): EcoCash, Zimswitch, PayGo, InnBucks, Internet/Mobile Banking, POS2U.
   Visa/Mastercard are inactive (need business verification). OneMoney and Telecash exist only as ZWG (unticked).
   Do not tick ZWG methods: the app sends USD amounts.
@@ -150,7 +167,11 @@ and number typed in the app are not sent to Paynow; the customer picks how to pa
 
 ## Not verified
 
-- A completed Paynow payment (EcoCash / OneMoney / InnBucks / card) and its webhook.
+- A completed **live-mode** Paynow payment (real money) and its webhook. Test-mode EcoCash express payments are
+  verified (2026-09-21, and again 2026-10-05 with the new keys). OneMoney, InnBucks and card payments are not. In the Node 22
+  test, Paynow did call `paynowResultWebhook` (23:49:42 UTC). The payment's `completedAt` (23:49:44) falls between
+  that call and the app's next status poll (23:49:47), so the webhook most likely marked it paid. That isn't proven:
+  the function doesn't log which path wrote the status.
 - The rest of the app on a release-signed build. Only phone login and Switch Role were tested on 6.22, and only rider
   approval and Switch Role on 6.23.
 - Simulation mode: from 6.24 customers can no longer switch it on (the "Manual Multi-Role Mode" checkbox is gone), so
