@@ -263,14 +263,15 @@ No remaining `bd-test-*` accounts or data. `feature/pesepay` branch (see below) 
 
 The signed AAB is built by `.github/workflows/build-release-aab.yml` (manual run or a `release-*` tag) from the
 repository secrets `KEYSTORE_BASE64`, `STORE_PASSWORD`, `KEY_PASSWORD`, `PAYNOW_INTEGRATION_ID`,
-`PAYNOW_INTEGRATION_KEY`. `app/build.gradle.kts` is at `versionCode = 30` / `versionName = "6.24"`.
+`PAYNOW_INTEGRATION_KEY`. `app/build.gradle.kts` is at `versionCode = 31` / `versionName = "6.24"`.
 
-**6.24 (versionCode 30) is built but not uploaded yet** (checked in the Play Console 2026-10-04: the highest bundle
-there is 29, and the closed track has an empty draft). It was built from `main` at commit `b2a47b3` (the PR #27 merge,
-so it has the 6.24 fixes, the Firestore checkout settings and customer ratings; Actions run 37207840182). The copy in
-`C:\Users\finge\Downloads\BiteDash-6.24-code30-release.aab` is byte-identical to that run's artifact (SHA-256
-`896bb90c…0c0cfa`). The two earlier 6.24 runs (37177228835, 37202818135) are older builds with the same version code;
-don't upload those.
+**6.24 (versionCode 31) is built, ready to upload to closed testing.** Built 2026-10-04 from `main` at commit
+`b07f438` (the PR #29 merge; Actions run 37252175110), signed with the upload key (CN=Fingerprint Acoustic). It has
+the 6.24 fixes, the Firestore checkout settings and customer ratings. Copied to
+`C:\Users\finge\Downloads\BiteDash-6.24-code31-release.aab` (SHA-256 `5d5d10ea…f36217`).
+Why 31: the Play Console refused versionCode 30 as "already used", although no bundle 30 was listed (a code stays
+used once a bundle with it has been uploaded, even if it's removed from a draft). **Never reuse 30**; the 6.24
+code-30 builds (runs 37177228835, 37202818135, 37207840182) can't be uploaded.
 
 The latest build on Play is **6.23 (versionCode 29)**, made 2026-10-03 from `main` at commit `739fa87` (the PR #21
 merge; Actions run 37168645007, artifact `BiteDash-release-aab`). It adds the live rider-approval fix (PR #20) on top
