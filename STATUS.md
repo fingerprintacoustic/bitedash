@@ -17,6 +17,11 @@ Last updated: 2026-10-05. Firebase project: `bitedash-1e078`. Branch: `main` (ev
   during the rollout, which callables reject. The same phone test was rerun on Node 22 the same evening and
   passed: `placeOrder`, then an EcoCash express payment ($5.50, 0771111111). Payment `PAID`, order `paymentStatus PAID`,
   `paymentRef` 64077187, no errors in the logs.
+  Later the same evening `firebase-functions` was upgraded from 6.6.0 to **7.4.0** (PR #33; no code changes needed,
+  `firebase-admin` stays on 12.7.0). All six functions were redeployed with `functions/.env` and the phone test passed
+  again: order `PAID`, `paymentRef` 64077425, no errors. Paynow called `paynowResultWebhook` at 00:05:59 UTC (2026-10-06).
+  The payment's `completedAt` (00:06:00) was before the app's next status poll (00:06:02), so the webhook again most
+  likely marked it paid.
 
 ## App behaviour verified on a device (debug build)
 
