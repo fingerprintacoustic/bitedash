@@ -236,6 +236,26 @@ The sweep used temporary restaurant, customer and admin accounts, created in the
 **Not testable on a debug build:** phone (SMS) login, which depends on the release signing key. Check it, and the
 items above, on the 6.25 release build from Play.
 
+## Pending for the next release (after 6.25; needs versionCode 34)
+
+6.25 (versionCode 33) is uploaded. The owner doesn't want another build for now, so these wait for the next one. Batch
+everything into that single AAB.
+- **Order notifications in the app. Required, decided by the owner on 2026-10-06.** Nobody is told a new order
+  arrived: not admins, restaurant owners or staff. An order sits at "Pending Acceptance" until someone happens to open
+  the app. This matters most for the three admin-created restaurants (Shava, soccer chips, chegutu potato cut),
+  which have no owner or staff. Their orders are only reachable by an admin through Admin Control Hub → Restaurants →
+  "Manage as Owner", and Shaddy (an admin) runs them that way. Plan:
+  - Firebase Cloud Messaging. The app registers each device's token on the user's document and asks for the Android
+    13+ notification permission.
+  - A Cloud Function sends the pushes, so nothing depends on the app being open:
+    - **Admins:** every new actionable order. A cash order is actionable at once; a Manual Pay or Paynow order once
+      it's paid.
+    - **Admins:** each Manual Pay payment waiting for confirmation.
+    - **The restaurant's owner and `staffEmails`:** their own orders.
+    - **Riders:** when an order is ready for pickup (to confirm with the owner).
+  - Test on a debug build before building, like the 6.25 sweep.
+- An email alert from a Cloud Function was offered as a no-build stopgap. The owner chose not to set one up for now.
+
 ## Not verified
 
 - A completed **live-mode** Paynow payment (real money) and its webhook. Test-mode EcoCash express payments are
