@@ -1,6 +1,6 @@
 # BiteDash status
 
-Last updated: 2026-10-05. Firebase project: `bitedash-1e078`. Branch: `main` (everything below is pushed).
+Last updated: 2026-10-06. Firebase project: `bitedash-1e078`. Branch: `main` (everything below is pushed).
 
 ## Deployed to production (matches `main`)
 
@@ -244,13 +244,13 @@ Each phase ends at a natural stopping point. **Current: Phase 2, nearly done.**
    (`placeOrder`, Paynow, ratings); manual mobile-money payments; checkout settings in Firestore; customer ratings.
 2. **Closed testing and hardening: current, nearly done.**
    - **Done so far:**
-     - Releases 6.22 → 6.25 to the closed track.
+     - Releases 6.22 → 6.25 to the closed track. 6.25 passed Google's review and is available to testers
+       (2026-10-06, reported by the owner).
      - Full tests of the release build: 6.24 end to end; 6.25 swept on a debug build before building.
      - Paynow verified in test mode with the new keys.
      - Functions moved to Node 22 and `firebase-functions` 7.
      - Test data cleaned out.
    - **Left:**
-     - 6.25 passes Google's review.
      - A short check on the Play build: phone (SMS) login and a quick look at the 6.25 fixes.
    - **Stopping point:** once that check passes.
 3. **Next app update, 6.26 (versionCode 34): order notifications.** Push alerts for admins, restaurant owners and
@@ -270,7 +270,7 @@ Each phase ends at a natural stopping point. **Current: Phase 2, nearly done.**
 
 ## Pending for the next release (after 6.25; needs versionCode 34)
 
-6.25 (versionCode 33) is uploaded. The owner doesn't want another build for now, so these wait for the next one. Batch
+6.25 (versionCode 33) is live on closed testing. The owner doesn't want another build for now, so these wait for the next one. Batch
 everything into that single AAB.
 - **Order notifications in the app. Required, decided by the owner on 2026-10-06.** Nobody is told a new order
   arrived: not admins, restaurant owners or staff. An order sits at "Pending Acceptance" until someone happens to open
@@ -475,12 +475,13 @@ The signed AAB is built by `.github/workflows/build-release-aab.yml` (manual run
 repository secrets `KEYSTORE_BASE64`, `STORE_PASSWORD`, `KEY_PASSWORD`, `PAYNOW_INTEGRATION_ID`,
 `PAYNOW_INTEGRATION_KEY`. `app/build.gradle.kts` is at `versionCode = 33` / `versionName = "6.25"`.
 
-**6.25 (versionCode 33) is built, ready to upload to closed testing.** Built 2026-10-06 from `main` at commit
+**6.25 (versionCode 33) is live on closed testing:** it passed Google's review and is available to testers
+(2026-10-06, reported by the owner). Built 2026-10-06 from `main` at commit
 `41021c2` (the PR #41 merge; Actions run 37412620230). It's signed with the upload key (CN=Fingerprint Acoustic,
 certificate SHA-256 `B5:79:C2:FB:…:8F:19:33`), and its manifest says versionName 6.25 / versionCode 33. It has
 everything in **6.25 (versionCode 33)** above, including the pre-release sweep fixes. Copied to
-`C:\Users\finge\Downloads\BiteDash-6.25-code33-release.aab` (17.7 MB, SHA-256 `60398f74…d85b0c`). Uploading is by
-hand in the Play Console. Until it is uploaded and through review, closed testers stay on 6.24.
+`C:\Users\finge\Downloads\BiteDash-6.25-code33-release.aab` (17.7 MB, SHA-256 `60398f74…d85b0c`). Uploaded by
+hand in the Play Console.
 
 **Superseded, do not upload: 6.25 (versionCode 32).** It was replaced by the versionCode 33 build, which adds the
 pre-release sweep fixes (see **6.25 (versionCode 33)** above). Kept here for the record: built 2026-10-06 from `main` at commit
