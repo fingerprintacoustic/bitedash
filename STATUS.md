@@ -252,14 +252,13 @@ used temporary restaurant, rider and customer accounts. Everything passed:
   - The app then showed **4.0** on Browse and **4.0 / 5.0** on the restaurant page.
 - **Switch Role** from the restaurant, rider and customer dashboards opened the role screen and stayed there.
 
-The test accounts were signed up and signed in by hand on the phone; the rest was driven over adb. **Test data
-deleted afterwards** and checked in the console:
-- The 3 test accounts' `users/` docs.
+The test accounts were signed up and signed in by hand on the phone; the rest was driven over adb. **All test data
+was deleted afterwards** and checked in the console:
+- The 3 Auth users (`bd-test-customer/-restaurant/-driver@example.com`, deleted by the admin) and their `users/` docs.
 - The `drivers/` doc, the restaurant and its 2 `menu_items`.
 - The order and its rating.
 
-Restaurants (4), menu items (5), rider profiles (2) and `users/` docs (9) are back to what they were before. The 3
-Auth users (`bd-test-customer/-restaurant/-driver@example.com`) are left for the admin to delete in the console.
+Restaurants (4), menu items (5), rider profiles (2) and accounts (9) are back to what they were before.
 
 ## 6.24 fixes: all tested together on a device (debug build, 2026-10-03)
 
