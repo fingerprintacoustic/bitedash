@@ -66,7 +66,15 @@ sealed interface PaymentStep {
         val cashOnDelivery: Boolean = false,
         val amountDue: Double = 0.0
     ) : PaymentStep
-    data class Error(val message: String) : PaymentStep
+    /** [title] heads the checkout dialog. Keep "Payment Issue" for real payment failures only:
+     *  a cash order rejected for a missing phone number has nothing to do with payment. */
+    data class Error(val message: String, val title: String = PAYMENT_ISSUE) : PaymentStep {
+        companion object {
+            const val PAYMENT_ISSUE = "Payment Issue"
+            const val CHECK_DETAILS = "Check Your Details"
+            const val ORDER_NOT_PLACED = "Order Not Placed"
+        }
+    }
 }
 
 sealed interface UserProfile {
@@ -995,24 +1003,32 @@ viewModelScope.launch {
                     isCash -> "Please enter a phone number the rider can call when they arrive."
                     method == "Bank Cards" -> "Please enter a contact phone number (at least 9 digits)."
                     else -> "Please enter a valid Zimbabwean mobile money number."
-                }
+                },
+                title = PaymentStep.Error.CHECK_DETAILS
             )
             return
         }
         if (isManualPayment && _manualPaymentReference.value.trim().length < 3) {
             _paymentStep.value = PaymentStep.Error(
-                "Please enter the reference or confirmation you got after sending the $method payment."
+                "Please enter the reference or confirmation you got after sending the $method payment.",
+                title = PaymentStep.Error.CHECK_DETAILS
             )
             return
         }
         if (_deliveryAddressInput.value.isBlank()) {
-            _paymentStep.value = PaymentStep.Error("Please enter a delivery address so the restaurant and driver know where to bring your order.")
+            _paymentStep.value = PaymentStep.Error(
+                "Please enter a delivery address so the restaurant and driver know where to bring your order.",
+                title = PaymentStep.Error.CHECK_DETAILS
+            )
             return
         }
 
         val uid = com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.uid
         if (uid == null) {
-            _paymentStep.value = PaymentStep.Error("You need to be signed in to place an order.")
+            _paymentStep.value = PaymentStep.Error(
+                "You need to be signed in to place an order.",
+                title = PaymentStep.Error.ORDER_NOT_PLACED
+            )
             return
         }
 
@@ -1055,12 +1071,14 @@ viewModelScope.launch {
                     else -> null
                 }
                 _paymentStep.value = PaymentStep.Error(
-                    serverMessage ?: "Couldn't reach the server to place your order. Please check your connection and try again."
+                    serverMessage ?: "Couldn't reach the server to place your order. Please check your connection and try again.",
+                    title = PaymentStep.Error.ORDER_NOT_PLACED
                 )
                 return@launch
             } catch (e: Exception) {
                 _paymentStep.value = PaymentStep.Error(
-                    "Couldn't reach the server to place your order. Please check your connection and try again."
+                    "Couldn't reach the server to place your order. Please check your connection and try again.",
+                    title = PaymentStep.Error.ORDER_NOT_PLACED
                 )
                 return@launch
             }
