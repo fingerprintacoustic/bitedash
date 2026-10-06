@@ -1608,7 +1608,7 @@ fun CartScreen(viewModel: BiteDashViewModel) {
                         }
                         is PaymentStep.Error -> {
                             Icon(Icons.Default.Close, contentDescription = "Error", tint = TelecashRed, modifier = Modifier.size(64.dp))
-                            Text("Payment Issue", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium, color = TelecashRed)
+                            Text(currentStep.title, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium, color = TelecashRed)
                             Text(currentStep.message, textAlign = TextAlign.Center)
                             Button(
                                 onClick = { viewModel.resetPaymentState() },
