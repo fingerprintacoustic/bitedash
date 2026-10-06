@@ -265,6 +265,23 @@ Also tested in this run and working: sign-up for all four roles, restaurant setu
 checkout through accept/prepare/ready, rider claim/pick-up/deliver (`COMPLETED` / `DELIVERED` in Firestore), rider
 approval moving the open screen on, and Switch Role from the customer header icon.
 
+## Test data: cleaned up (2026-10-05)
+
+After the Paynow tests on 2026-10-05, all test data was removed from the production project. Everything below was
+checked in the console afterwards.
+- **From the Paynow tests:** 4 temporary customers (`bd-test-customer@example.com` and `bd-test-customer2/3/4@…`).
+  Their Auth users (deleted by the admin) and `users/` docs, 4 test orders (3 paid) and 3 test payments are gone.
+- **Older test data found on the way:**
+  - The Auth users `testrestaurant@email.com` and `testdriver@email.com` (deleted by the admin) and their `users/`
+    docs. Their `drivers/` profile was deleted too.
+  - Two "Test restaurant" restaurants (`RQ5MBC9vmjAtVMTpnis9` and `wc61aWqZqmbeOvFyflHm`), both inactive.
+  - Order `G3d4HszgnSZco4Urbcp2`, from 2026-09-20 ("BD Test Customer"), the last order left after the September
+    cleanup.
+  - 3 test `menu_items`: two "test menu" items and a "2 Piece Chicken" that had no `restaurantId`.
+- **Left behind:** no orders or payments at all, so the `orders` and `payments` collections don't currently exist.
+  They come back with the first real order. 4 restaurants, 5 menu items, 2 rider profiles and 9 accounts remain.
+  `paynowLive` is `false`.
+
 ## Test data: cleaned up (2026-09-22)
 
 All `bd-test-*` test data has been removed from the production Firebase project:
