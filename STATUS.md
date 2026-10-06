@@ -423,6 +423,13 @@ The signed AAB is built by `.github/workflows/build-release-aab.yml` (manual run
 repository secrets `KEYSTORE_BASE64`, `STORE_PASSWORD`, `KEY_PASSWORD`, `PAYNOW_INTEGRATION_ID`,
 `PAYNOW_INTEGRATION_KEY`. `app/build.gradle.kts` is at `versionCode = 33` / `versionName = "6.25"`.
 
+**6.25 (versionCode 33) is built, ready to upload to closed testing.** Built 2026-10-06 from `main` at commit
+`41021c2` (the PR #41 merge; Actions run 37412620230). It's signed with the upload key (CN=Fingerprint Acoustic,
+certificate SHA-256 `B5:79:C2:FB:…:8F:19:33`), and its manifest says versionName 6.25 / versionCode 33. It has
+everything in **6.25 (versionCode 33)** above, including the pre-release sweep fixes. Copied to
+`C:\Users\finge\Downloads\BiteDash-6.25-code33-release.aab` (17.7 MB, SHA-256 `60398f74…d85b0c`). Uploading is by
+hand in the Play Console. Until it is uploaded and through review, closed testers stay on 6.24.
+
 **Superseded, do not upload: 6.25 (versionCode 32).** It was replaced by the versionCode 33 build, which adds the
 pre-release sweep fixes (see **6.25 (versionCode 33)** above). Kept here for the record: built 2026-10-06 from `main` at commit
 `411e9f1` (the PR #39 merge; Actions run 37406086115). It's signed with the upload key (CN=Fingerprint Acoustic,
