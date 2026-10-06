@@ -170,6 +170,22 @@ and number typed in the app are not sent to Paynow; the customer picks how to pa
 - Online orders are saved before payment. Restaurants now only see Cash on Delivery orders and orders Paynow has
   confirmed as paid. Abandoned/failed payments are not cancelled: they stay in Firestore, hidden from restaurants.
 
+## Pending for the next release (on `main`, not in 6.24)
+
+Fixes merged since 6.24 (versionCode 31). They reach users only in the next AAB, which needs a version bump (the next
+versionCode is **32**; never 30). Batch these with anything else pending into one build.
+- **Checkout error titles** (PR #37). The checkout dialog used to title every error "Payment Issue", including a cash
+  order refused for a phone number of just "07". Now:
+  - Form problems (phone, manual-payment reference, address) say "Check Your Details".
+  - A failure to place the order says "Order Not Placed".
+  - Only real payment failures, cancelled payments and unavailable channels still say "Payment Issue".
+  - Found in the 6.24 release-build test.
+- **Checkout dialog header** (this PR): "Carrier Processing" became "Checkout". The header shows on every checkout
+  step, including cash orders and form errors.
+
+Both were built and unit-tested on 2026-10-05, with lint showing no errors. **Neither has been seen on a device
+yet.** Check them on the next build: cash checkout with phone "07", then a successful cash order.
+
 ## Not verified
 
 - A completed **live-mode** Paynow payment (real money) and its webhook. Test-mode EcoCash express payments are
