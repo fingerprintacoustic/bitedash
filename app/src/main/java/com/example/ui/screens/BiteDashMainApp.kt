@@ -5453,6 +5453,7 @@ private fun ManualPaymentsTab(viewModel: BiteDashViewModel) {
         } else {
             pending.forEach { order ->
                 var showReject by remember(order.id) { mutableStateOf(false) }
+                var showConfirm by remember(order.id) { mutableStateOf(false) }
                 Card(
                     modifier = Modifier.fillMaxWidth().testTag("manual_payment_order_${order.id}"),
                     shape = RoundedCornerShape(12.dp),
@@ -5480,7 +5481,7 @@ private fun ManualPaymentsTab(viewModel: BiteDashViewModel) {
                                 Text("Not Received", color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
                             }
                             Button(
-                                onClick = { viewModel.confirmManualPayment(order.id) },
+                                onClick = { showConfirm = true },
                                 modifier = Modifier.weight(1f).testTag("confirm_manual_payment_${order.id}")
                             ) {
                                 Text("Confirm Received", fontSize = 12.sp)
@@ -5499,6 +5500,28 @@ private fun ManualPaymentsTab(viewModel: BiteDashViewModel) {
                             }
                         },
                         dismissButton = { TextButton(onClick = { showReject = false }) { Text("Never Mind") } }
+                    )
+                }
+                if (showConfirm) {
+                    // Confirming sends the order to the restaurant and can't be undone, so
+                    // ask first, like "Not Received" above.
+                    AlertDialog(
+                        onDismissRequest = { showConfirm = false },
+                        title = { Text("Payment received?") },
+                        text = {
+                            Text(
+                                "Confirm that $${String.format(Locale.US, "%.2f", order.totalCost)} arrived with reference " +
+                                    "\"${order.customerPaymentReference.ifBlank { "(none entered)" }}\". " +
+                                    "The order then goes to \"${order.restaurantName}\".",
+                                fontSize = 13.sp
+                            )
+                        },
+                        confirmButton = {
+                            TextButton(onClick = { viewModel.confirmManualPayment(order.id); showConfirm = false }) {
+                                Text("Confirm Received")
+                            }
+                        },
+                        dismissButton = { TextButton(onClick = { showConfirm = false }) { Text("Never Mind") } }
                     )
                 }
             }
