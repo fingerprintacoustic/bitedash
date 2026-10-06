@@ -1627,6 +1627,31 @@ fun CartScreen(viewModel: BiteDashViewModel) {
 }
 
 // REAL-TIME TRACKING SCREEN
+const val SUPPORT_EMAIL = "bitedashsupport@gmail.com"
+
+/**
+ * What Tracking says about an order that was rejected or cancelled. A customer who already
+ * paid (Paynow, or a manual payment the admin confirmed) is told how to get a refund, and
+ * one whose manual payment the admin couldn't find is told who to contact if they did send it.
+ */
+fun resolvedOrderMessage(notice: BiteDashViewModel.ResolvedOrderNotice, oneOfSeveral: Boolean): String {
+    val what = if (oneOfSeveral) "one of your orders" else "your order"
+    return when {
+        notice.manualPaymentNotFound ->
+            "We couldn't find your payment for $what from ${notice.restaurantName}, so it was cancelled. " +
+                "If you did send the money, email $SUPPORT_EMAIL with your payment reference."
+        notice.wasPaid ->
+            "${notice.restaurantName} ${if (notice.status == "REJECTED") "rejected" else "cancelled"} $what. " +
+                "You've already paid for it: email $SUPPORT_EMAIL for a refund."
+        oneOfSeveral ->
+            "${notice.restaurantName} ${if (notice.status == "REJECTED") "rejected" else "cancelled"} $what. " +
+                "Check History for details."
+        else ->
+            "${notice.restaurantName} ${if (notice.status == "REJECTED") "rejected" else "cancelled"} $what. " +
+                "Check History for details, or try another restaurant."
+    }
+}
+
 @Composable
 fun ActiveTrackingScreen(viewModel: BiteDashViewModel) {
     val activeOrder by viewModel.activeOrder.collectAsStateWithLifecycle()
@@ -1663,8 +1688,7 @@ fun ActiveTrackingScreen(viewModel: BiteDashViewModel) {
                         color = MaterialTheme.colorScheme.error
                     )
                     Text(
-                        text = "${notice.restaurantName} ${if (notice.status == "REJECTED") "rejected" else "cancelled"} your order. " +
-                            "Check History for details, or try another restaurant.",
+                        text = resolvedOrderMessage(notice, oneOfSeveral = false),
                         style = MaterialTheme.typography.bodyMedium,
                         color = Color.Gray,
                         textAlign = TextAlign.Center
@@ -1723,8 +1747,7 @@ fun ActiveTrackingScreen(viewModel: BiteDashViewModel) {
                             Icon(Icons.Default.Cancel, contentDescription = null, tint = MaterialTheme.colorScheme.error)
                             Spacer(modifier = Modifier.width(8.dp))
                             Text(
-                                text = "${notice.restaurantName} ${if (notice.status == "REJECTED") "rejected" else "cancelled"} " +
-                                    "one of your orders. Check History for details.",
+                                text = resolvedOrderMessage(notice, oneOfSeveral = true),
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = MaterialTheme.colorScheme.onErrorContainer,
                                 modifier = Modifier.weight(1f)
@@ -2250,6 +2273,22 @@ fun HistoryScreen(viewModel: BiteDashViewModel) {
                                     Spacer(modifier = Modifier.width(4.dp))
                                     Text("Reorder", fontSize = 11.sp, fontWeight = FontWeight.Bold)
                                 }
+                            }
+                        }
+
+                        // A rejected/cancelled order the customer paid for (or believes they
+                        // paid for) keeps the refund contact here; the Tracking notice can be
+                        // dismissed.
+                        if (order.status == "REJECTED" || order.status == "CANCELLED") {
+                            val notice = BiteDashViewModel.ResolvedOrderNotice(order.restaurantName, order.status, order.paymentStatus)
+                            if (notice.wasPaid || notice.manualPaymentNotFound) {
+                                Divider(color = Color.LightGray.copy(alpha = 0.3f))
+                                Text(
+                                    text = if (notice.wasPaid) "Paid but not fulfilled: email $SUPPORT_EMAIL for a refund."
+                                    else "Payment not found. If you sent it, email $SUPPORT_EMAIL with your reference.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.error
+                                )
                             }
                         }
 

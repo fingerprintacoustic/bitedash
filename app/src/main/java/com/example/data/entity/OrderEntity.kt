@@ -17,5 +17,12 @@ data class OrderEntity(
     val driverId: String? = null,
     val driverName: String? = null,
     val isSettled: Boolean = false,
-    val firestoreOrderId: String? = null
+    val firestoreOrderId: String? = null,
+    // The account that placed the order. The local cache used to have no owner, so on a
+    // shared phone the next account to sign in saw the previous one's orders.
+    val userId: String = "",
+    // Mirrors FirestoreOrder.paymentStatus (CASH_ON_DELIVERY, AWAITING_MANUAL_CONFIRMATION,
+    // PAID, FAILED, ...), so Tracking can tell "checking your payment" apart from
+    // "waiting for the restaurant", and a rejected order knows whether it was paid.
+    val paymentStatus: String = ""
 )
