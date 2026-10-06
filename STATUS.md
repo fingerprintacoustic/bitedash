@@ -186,8 +186,8 @@ versionCode **33** (never 30).
 Both were built and unit-tested on 2026-10-05, with lint showing no errors. **Checked on the test phone (debug
 build, 2026-10-05):** a cash checkout with phone "07" showed the header "Checkout" and the title "Check Your Details"
 above "Please enter a phone number the rider can call when they arrive." No order was created. The temporary
-customer's `users/` doc was deleted afterwards; its Auth user is left for the admin to delete. Not yet seen on the
-6.25 release build.
+customer's `users/` doc and Auth user (deleted by the admin) were removed afterwards. Not yet seen on the 6.25
+release build.
 
 ## Not verified
 
@@ -375,6 +375,13 @@ No remaining `bd-test-*` accounts or data. `feature/pesepay` branch (see below) 
 The signed AAB is built by `.github/workflows/build-release-aab.yml` (manual run or a `release-*` tag) from the
 repository secrets `KEYSTORE_BASE64`, `STORE_PASSWORD`, `KEY_PASSWORD`, `PAYNOW_INTEGRATION_ID`,
 `PAYNOW_INTEGRATION_KEY`. `app/build.gradle.kts` is at `versionCode = 32` / `versionName = "6.25"`.
+
+**6.25 (versionCode 32) is built, ready to upload to closed testing.** Built 2026-10-06 from `main` at commit
+`411e9f1` (the PR #39 merge; Actions run 37406086115). It's signed with the upload key (CN=Fingerprint Acoustic,
+certificate SHA-256 `B5:79:C2:FB:…:8F:19:33`), and its manifest says versionName 6.25 / versionCode 32. It has the
+6.25 changes (see **6.25 (versionCode 32)** above). Copied to
+`C:\Users\finge\Downloads\BiteDash-6.25-code32-release.aab` (17.7 MB, SHA-256 `399fd195…1e95bb`). Uploading is by
+hand in the Play Console. Until it is uploaded and through review, closed testers stay on 6.24.
 
 **6.24 (versionCode 31) is uploaded to closed testing**, replacing 6.23. Built 2026-10-04 from `main` at commit
 `b07f438` (the PR #29 merge; Actions run 37252175110), signed with the upload key (CN=Fingerprint Acoustic). It has
