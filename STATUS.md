@@ -187,8 +187,25 @@ sweep then found the bugs below, so it was rebuilt as 33. Don't upload the code-
 Both were built and unit-tested on 2026-10-05, with lint showing no errors. **Checked on the test phone (debug
 build, 2026-10-05):** a cash checkout with phone "07" showed the header "Checkout" and the title "Check Your Details"
 above "Please enter a phone number the rider can call when they arrive." No order was created. The temporary
-customer's `users/` doc and Auth user (deleted by the admin) were removed afterwards. Not yet seen on the 6.25
-release build.
+customer's `users/` doc and Auth user (deleted by the admin) were removed afterwards. **Also passed on the 6.25
+release build from Play** (2026-10-06; see **6.25 on the Play build** below).
+
+### 6.25 on the Play build: checked and passing (2026-10-06)
+
+The test Samsung had **6.25 / versionCode 33** installed from Play closed testing (installer `com.android.vending`).
+- **Phone (SMS) login:** a temporary Firebase test number (+263 77 000 3434, fixed code, no SMS sent) was typed in
+  by hand and signed up as Customer. It landed on the role screen with the Customer tab selected, and it was still
+  signed in as a customer after a force-stop and reopen.
+- **Checkout with phone "07"** (USD Cash, an address entered): header "Checkout", title "Check Your Details", "Please
+  enter a phone number the rider can call when they arrive." No order was created.
+- **Sign Out** returned to the login screen.
+- Small observation, not a blocker: the cash contact phone field showed "07", not the account's phone
+  (+263770003434), which the EcoCash field did show. Not checked whether "07" was placeholder text.
+
+Cleanup: `users/zluWze5KvgT4x9cXNMM2aFMPlWI2` was deleted with the Firebase CLI (not checked in the console
+afterwards). **Still to do by hand:** delete that Auth user (+263770003434) and remove the test number from
+Sign-in method → Phone. The Auth users list also still has `bd-test-admin@`, `bd-test-customer@` and
+`bd-test-restaurant@example.com` from 2026-10-05, although they were recorded as deleted.
 
 ### Pre-release sweep (debug build, 2026-10-05)
 
@@ -238,21 +255,20 @@ items above, on the 6.25 release build from Play.
 
 ## Project phases (where we are)
 
-Each phase ends at a natural stopping point. **Current: Phase 2, nearly done.**
+Each phase ends at a natural stopping point. **Current: Phase 2 done (2026-10-06); build freeze while
+testers try 6.25.** The owner wants no new builds until customers have tested 6.25 as it is, so Phase 3 waits.
 
 1. **Build the app: done.** Customer, restaurant, rider and admin apps; Firestore and its rules; Cloud Functions
    (`placeOrder`, Paynow, ratings); manual mobile-money payments; checkout settings in Firestore; customer ratings.
-2. **Closed testing and hardening: current, nearly done.**
+2. **Closed testing and hardening: done.**
    - **Done so far:**
      - Releases 6.22 → 6.25 to the closed track. 6.25 passed Google's review and is available to testers
        (2026-10-06, reported by the owner).
      - Full tests of the release build: 6.24 end to end; 6.25 swept on a debug build before building.
      - Paynow verified in test mode with the new keys.
      - Functions moved to Node 22 and `firebase-functions` 7.
-     - Test data cleaned out.
-   - **Left:**
-     - A short check on the Play build: phone (SMS) login and a quick look at the 6.25 fixes.
-   - **Stopping point:** once that check passes.
+     - Test data cleaned out (apart from the Auth users listed under **6.25 on the Play build**).
+     - Phone (SMS) login and the "07" checkout checked on 6.25 from Play (2026-10-06).
 3. **Next app update, 6.26 (versionCode 34): order notifications.** Push alerts for admins, restaurant owners and
    staff, and riders (see **Pending for the next release**). One build, tested on the phone first.
    - **Stopping point:** 6.26 passes on the Play build.
