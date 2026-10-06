@@ -180,7 +180,7 @@ versionCode is **32**; never 30). Batch these with anything else pending into on
   - A failure to place the order says "Order Not Placed".
   - Only real payment failures, cancelled payments and unavailable channels still say "Payment Issue".
   - Found in the 6.24 release-build test.
-- **Checkout dialog header** (this PR): "Carrier Processing" became "Checkout". The header shows on every checkout
+- **Checkout dialog header** (PR #38): "Carrier Processing" became "Checkout". The header shows on every checkout
   step, including cash orders and form errors.
 
 Both were built and unit-tested on 2026-10-05, with lint showing no errors. **Neither has been seen on a device
