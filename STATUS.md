@@ -236,6 +236,38 @@ The sweep used temporary restaurant, customer and admin accounts, created in the
 **Not testable on a debug build:** phone (SMS) login, which depends on the release signing key. Check it, and the
 items above, on the 6.25 release build from Play.
 
+## Project phases (where we are)
+
+Each phase ends at a natural stopping point. **Current: Phase 2, nearly done.**
+
+1. **Build the app: done.** Customer, restaurant, rider and admin apps; Firestore and its rules; Cloud Functions
+   (`placeOrder`, Paynow, ratings); manual mobile-money payments; checkout settings in Firestore; customer ratings.
+2. **Closed testing and hardening: current, nearly done.**
+   - **Done so far:**
+     - Releases 6.22 → 6.25 to the closed track.
+     - Full tests of the release build: 6.24 end to end; 6.25 swept on a debug build before building.
+     - Paynow verified in test mode with the new keys.
+     - Functions moved to Node 22 and `firebase-functions` 7.
+     - Test data cleaned out.
+   - **Left:**
+     - 6.25 passes Google's review.
+     - A short check on the Play build: phone (SMS) login and a quick look at the 6.25 fixes.
+   - **Stopping point:** once that check passes.
+3. **Next app update, 6.26 (versionCode 34): order notifications.** Push alerts for admins, restaurant owners and
+   staff, and riders (see **Pending for the next release**). One build, tested on the phone first.
+   - **Stopping point:** 6.26 passes on the Play build.
+4. **Go-live readiness:**
+   - 12 closed testers opted in for 14 days in a row, then request production access.
+   - Paynow: "Request to be Set Live", then delete `functions/.env`, redeploy, set `paynowLive: true`, and make one
+     small real-money payment test.
+   - Real owners or staff for the restaurants, or a decision to keep running them through admin.
+   - Tighten the `orders` create rule once everyone is on 6.24 or later.
+   - **Stopping point:** production access granted and Paynow live.
+5. **Launch and run:**
+   - Promote the tested build to production.
+   - Watch orders and payments.
+   - Fix what real customers find, batched into single updates.
+
 ## Pending for the next release (after 6.25; needs versionCode 34)
 
 6.25 (versionCode 33) is uploaded. The owner doesn't want another build for now, so these wait for the next one. Batch
@@ -252,7 +284,7 @@ everything into that single AAB.
       it's paid.
     - **Admins:** each Manual Pay payment waiting for confirmation.
     - **The restaurant's owner and `staffEmails`:** their own orders.
-    - **Riders:** when an order is ready for pickup (to confirm with the owner).
+    - **Riders:** when an order is ready for pickup (confirmed by the owner on 2026-10-06).
   - Test on a debug build before building, like the 6.25 sweep.
 - An email alert from a Cloud Function was offered as a no-build stopgap. The owner chose not to set one up for now.
 
