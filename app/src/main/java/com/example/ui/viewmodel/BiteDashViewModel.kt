@@ -165,7 +165,12 @@ class BiteDashViewModel(application: Application) : AndroidViewModel(application
     // excluded from that query on purpose, same as COMPLETED). Without this,
     // the Tracking tab just silently reverted to its generic "No active
     // deliveries" empty state with no indication the order was ever rejected.
-    data class ResolvedOrderNotice(val restaurantName: String, val status: String)
+    /** [paymentStatus] is the order's, so the notice can tell a paid order (refund needed)
+     *  and a manual payment the admin couldn't find apart from an unpaid cash order. */
+    data class ResolvedOrderNotice(val restaurantName: String, val status: String, val paymentStatus: String = "") {
+        val wasPaid: Boolean get() = paymentStatus == "PAID"
+        val manualPaymentNotFound: Boolean get() = paymentStatus == "FAILED" && status == "CANCELLED"
+    }
     private val _resolvedOrderNotice = MutableStateFlow<ResolvedOrderNotice?>(null)
     val resolvedOrderNotice: StateFlow<ResolvedOrderNotice?> = _resolvedOrderNotice.asStateFlow()
 
@@ -683,15 +688,23 @@ viewModelScope.launch {
 
 
 
-    // Room Database Flows
-    val orderHistory: StateFlow<List<OrderEntity>> = repository.allOrders
+    // Room Database Flows: only the signed-in account's orders (nothing while signed out).
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+    val orderHistory: StateFlow<List<OrderEntity>> = authUid
+        .flatMapLatest { uid ->
+            if (uid == null) kotlinx.coroutines.flow.flowOf(emptyList()) else repository.allOrders(uid)
+        }
         .stateIn(
             scope = viewModelScope,
             started = SharingStarted.WhileSubscribed(5000),
             initialValue = emptyList()
         )
 
-    val dbActiveOrders: StateFlow<List<OrderEntity>> = repository.activeOrders
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+    val dbActiveOrders: StateFlow<List<OrderEntity>> = authUid
+        .flatMapLatest { uid ->
+            if (uid == null) kotlinx.coroutines.flow.flowOf(emptyList()) else repository.activeOrders(uid)
+        }
         .stateIn(
             scope = viewModelScope,
             started = SharingStarted.WhileSubscribed(5000),
@@ -715,8 +728,13 @@ viewModelScope.launch {
                     // Direct DB read rather than relying on another, separately-
                     // collected Flow being up to date yet for this exact write.
                     val resolved = repository.getOrderById(lastId)
-                    if (resolved != null && (resolved.status == "REJECTED" || resolved.status == "CANCELLED")) {
-                        notice = ResolvedOrderNotice(resolved.restaurantName, resolved.status)
+                    val currentUid = com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.uid
+                    // The order can also leave the list because a different account signed in;
+                    // that's no rejection, and it isn't this account's order to report on.
+                    if (resolved != null && resolved.userId == currentUid &&
+                        (resolved.status == "REJECTED" || resolved.status == "CANCELLED")
+                    ) {
+                        notice = ResolvedOrderNotice(resolved.restaurantName, resolved.status, resolved.paymentStatus)
                     }
                 }
 
@@ -733,7 +751,7 @@ viewModelScope.launch {
                     previousActiveOrderId = currentTrack.id
                     _activeOrder.value = currentTrack
                     if (_isManualMode.value) {
-                        updateTrackingStateManual(currentTrack.status)
+                        updateTrackingStateManual(currentTrack.status, currentTrack.paymentStatus)
                     } else if (trackingJob == null || !trackingJob!!.isActive) {
                         resumeTracking(currentTrack)
                     }
@@ -752,15 +770,46 @@ viewModelScope.launch {
         // an order that was already delivered. Only in manual (real) mode: the
         // simulation mode fakes its own progress locally and its Firestore copy never
         // moves past PREPARING.
+        //
+        // It also keeps the cache to the signed-in account. The cache used to have no
+        // owner and outlived sign-out, so on a shared phone the next account saw the
+        // previous one's orders (and could inherit their cart). Now another account's
+        // orders and the cart are dropped on sign-in, and the account's own orders are
+        // reloaded from Firestore, so History also survives sign-out and reinstalls.
         viewModelScope.launch {
+            var previousUid: String? = null
             authUid.collectLatest { uid ->
+                if (uid != previousUid) {
+                    // Signed out, or a different account signed in: nothing from the
+                    // previous account (cart, notices) may carry over.
+                    _cart.value = emptyList()
+                    _resolvedOrderNotice.value = null
+                    previousUid = uid
+                }
+                try {
+                    if (uid == null) repository.deleteAll() else repository.deleteOrdersNotOwnedBy(uid)
+                } catch (e: kotlinx.coroutines.CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    android.util.Log.e("BiteDashSync", "Failed to clear other accounts' orders: ${e.message}", e)
+                }
                 if (uid == null) return@collectLatest
                 try {
                     firestoreService.getUserOrderUpdatesFlow(uid).collect { remoteOrders ->
                         if (!_isManualMode.value) return@collect
                         remoteOrders.forEach { remote ->
                             try {
-                                val local = repository.getOrderByFirestoreId(remote.id) ?: return@forEach
+                                val local = repository.getOrderByFirestoreId(remote.id)
+                                if (local == null) {
+                                    // Not on this phone yet (signed in again, new phone, or the
+                                    // cache was rebuilt): add it, unless it's an abandoned online
+                                    // payment that was never paid.
+                                    toLocalOrder(remote, uid)?.let { repository.insertOrder(it) }
+                                    return@forEach
+                                }
+                                if (remote.paymentStatus.isNotBlank() && remote.paymentStatus != local.paymentStatus) {
+                                    repository.updatePaymentStatus(local.id, remote.paymentStatus)
+                                }
                                 // Forward-only, and a finished order stays finished, so a
                                 // stale snapshot can never drag an order backwards.
                                 val localRank = orderStatusRank(local.status)
@@ -795,6 +844,47 @@ viewModelScope.launch {
         "COMPLETED" -> 5
         "REJECTED", "CANCELLED" -> 6
         else -> -1
+    }
+
+    // A Firestore order as this phone's cached copy, or null for an online (Paynow)
+    // payment that was started but never paid: those orders exist in Firestore but were
+    // never the customer's order, so they don't belong in History. Cash, manual
+    // mobile-money (paid, waiting, or not found) and paid online orders are kept.
+    private fun toLocalOrder(remote: com.example.data.firebase.FirestoreOrder, uid: String): OrderEntity? {
+        val isCash = remote.paymentMethod == "CASH_ON_DELIVERY"
+        val isManual = remote.customerPaymentReference.isNotBlank() ||
+            remote.paymentStatus == "AWAITING_MANUAL_CONFIRMATION"
+        val isPaid = remote.paymentStatus == "PAID" || remote.paymentStatus == "COMPLETED"
+        if (!isCash && !isManual && !isPaid) return null
+        return OrderEntity(
+            restaurantName = remote.restaurantName,
+            itemsSummary = remote.itemsSummary,
+            totalCost = remote.totalCost,
+            paymentMethod = paymentMethodLabel(remote.paymentMethod),
+            paymentPhone = remote.customerPhone,
+            status = remote.status,
+            driverTip = remote.driverTip,
+            timestamp = remote.createdAt?.toDate()?.time ?: System.currentTimeMillis(),
+            driverId = remote.driverId,
+            driverName = remote.driverName,
+            isSettled = remote.isSettled,
+            firestoreOrderId = remote.id,
+            userId = uid,
+            paymentStatus = remote.paymentStatus
+        )
+    }
+
+    // The reverse of mapToFirestorePaymentMethod, for orders reloaded from Firestore.
+    private fun paymentMethodLabel(firestoreMethod: String): String = when (firestoreMethod) {
+        "ECO_CASH" -> "EcoCash"
+        "ONE_MONEY" -> "OneMoney"
+        "INNBUCKS" -> "InnBucks"
+        "CASH_ON_DELIVERY" -> "USD Cash"
+        "TELECASH" -> "Telecash"
+        "OMARI" -> "O'Mari"
+        "ZIPIT" -> "ZIPIT"
+        "BANK_CARDS" -> "Bank Cards"
+        else -> firestoreMethod
     }
 
     // Search and filters
@@ -1186,7 +1276,15 @@ viewModelScope.launch {
                 paymentPhone = paymentPhone,
                 status = initialStatus,
                 driverTip = _driverTip.value,
-                firestoreOrderId = firestoreOrderId
+                firestoreOrderId = firestoreOrderId,
+                userId = uid,
+                // Same values placeOrder / the Paynow flow store on the Firestore order; an
+                // online payment only gets this far once it's PAID.
+                paymentStatus = when {
+                    isCash -> "CASH_ON_DELIVERY"
+                    isManualPayment -> "AWAITING_MANUAL_CONFIRMATION"
+                    else -> "PAID"
+                }
             )
 
             val orderId = repository.insertOrder(newOrder)
@@ -1213,7 +1311,7 @@ viewModelScope.launch {
                 // Start delivery simulation!
                 startTrackingSimulation(insertedOrder)
             } else {
-                updateTrackingStateManual(initialStatus)
+                updateTrackingStateManual(initialStatus, insertedOrder.paymentStatus)
             }
         }
     }
@@ -1450,15 +1548,13 @@ viewModelScope.launch {
         }
     }
 
-    fun updateTrackingStateManual(status: String) {
-        _trackingStatusText.value = when (status) {
-            "PENDING_ACCEPTANCE" -> "Waiting for Restaurant to Accept..."
-            "ACCEPTED" -> "Restaurant accepted your order! Starting on it shortly..."
-            "PREPARING" -> "Kitchen preparing your freshly cooked meal..."
-            "READY_FOR_PICKUP" -> "Meal is ready! Waiting for rider pickup..."
-            "OUT_FOR_DELIVERY" -> "Rider in transit down Samora Machel Avenue..."
-            "COMPLETED" -> "Meal successfully delivered! Savor BiteDash meal."
-            else -> "Processing..."
+    fun updateTrackingStateManual(status: String, paymentStatus: String = "") {
+        _trackingStatusText.value = when {
+            // A manual mobile-money order is hidden from the restaurant until an admin
+            // confirms the money arrived, so "waiting for the restaurant" was wrong.
+            status == "PENDING_ACCEPTANCE" && paymentStatus == "AWAITING_MANUAL_CONFIRMATION" ->
+                "Checking your payment... The restaurant gets your order once it's confirmed."
+            else -> trackingStatusText(status)
         }
         _trackingProgress.value = when (status) {
             "PENDING_ACCEPTANCE" -> 0.0f
@@ -1470,6 +1566,17 @@ viewModelScope.launch {
             else -> 0.0f
         }
     }
+
+    private fun trackingStatusText(status: String): String =
+        when (status) {
+            "PENDING_ACCEPTANCE" -> "Waiting for Restaurant to Accept..."
+            "ACCEPTED" -> "Restaurant accepted your order! Starting on it shortly..."
+            "PREPARING" -> "Kitchen preparing your freshly cooked meal..."
+            "READY_FOR_PICKUP" -> "Meal is ready! Waiting for rider pickup..."
+            "OUT_FOR_DELIVERY" -> "Rider in transit down Samora Machel Avenue..."
+            "COMPLETED" -> "Meal successfully delivered! Savor BiteDash meal."
+            else -> "Processing..."
+        }
 
     override fun onCleared() {
         super.onCleared()

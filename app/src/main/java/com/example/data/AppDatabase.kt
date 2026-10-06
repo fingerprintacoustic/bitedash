@@ -32,7 +32,10 @@ import com.example.data.entity.DriverEntity
 // RestaurantEntity's approval gate — self-registered drivers now start
 // pending until an admin approves them, instead of being able to claim
 // deliveries immediately with zero vetting.
-@Database(entities = [OrderEntity::class, RestaurantEntity::class, DriverEntity::class], version = 10, exportSchema = false)
+// version bumped 10 -> 11: OrderEntity gained userId and paymentStatus. The rebuild
+// wipes local order history once, but BiteDashViewModel now reloads each signed-in
+// customer's orders from Firestore, so History fills back in by itself.
+@Database(entities = [OrderEntity::class, RestaurantEntity::class, DriverEntity::class], version = 11, exportSchema = false)
 @TypeConverters(Converters::class)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun orderDao(): OrderDao

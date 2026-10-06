@@ -5,8 +5,15 @@ import com.example.data.entity.OrderEntity
 import kotlinx.coroutines.flow.Flow
 
 class OrderRepository(private val orderDao: OrderDao) {
-    val allOrders: Flow<List<OrderEntity>> = orderDao.getAllOrders()
-    val activeOrders: Flow<List<OrderEntity>> = orderDao.getActiveOrders()
+    fun allOrders(userId: String): Flow<List<OrderEntity>> = orderDao.getAllOrders(userId)
+    fun activeOrders(userId: String): Flow<List<OrderEntity>> = orderDao.getActiveOrders(userId)
+
+    suspend fun deleteOrdersNotOwnedBy(userId: String) = orderDao.deleteOrdersNotOwnedBy(userId)
+
+    suspend fun deleteAll() = orderDao.deleteAll()
+
+    suspend fun updatePaymentStatus(orderId: Int, paymentStatus: String) =
+        orderDao.updatePaymentStatus(orderId, paymentStatus)
 
     suspend fun insertOrder(order: OrderEntity): Long {
         return orderDao.insertOrder(order)

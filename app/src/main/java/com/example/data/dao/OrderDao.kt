@@ -10,13 +10,24 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface OrderDao {
-    @Query("SELECT * FROM orders ORDER BY timestamp DESC")
-    fun getAllOrders(): Flow<List<OrderEntity>>
+    // Always scoped to one account: the phone may be shared, and the cache outlives sign-out.
+    @Query("SELECT * FROM orders WHERE userId = :userId ORDER BY timestamp DESC")
+    fun getAllOrders(userId: String): Flow<List<OrderEntity>>
 
     // REJECTED / CANCELLED are as finished as COMPLETED — otherwise an order the
     // restaurant turned down would sit in "active tracking" forever.
-    @Query("SELECT * FROM orders WHERE status NOT IN ('COMPLETED', 'REJECTED', 'CANCELLED') ORDER BY timestamp DESC")
-    fun getActiveOrders(): Flow<List<OrderEntity>>
+    @Query("SELECT * FROM orders WHERE userId = :userId AND status NOT IN ('COMPLETED', 'REJECTED', 'CANCELLED') ORDER BY timestamp DESC")
+    fun getActiveOrders(userId: String): Flow<List<OrderEntity>>
+
+    // Drops every other account's orders from this phone once someone else signs in.
+    @Query("DELETE FROM orders WHERE userId != :userId")
+    suspend fun deleteOrdersNotOwnedBy(userId: String)
+
+    @Query("DELETE FROM orders")
+    suspend fun deleteAll()
+
+    @Query("UPDATE orders SET paymentStatus = :paymentStatus WHERE id = :orderId")
+    suspend fun updatePaymentStatus(orderId: Int, paymentStatus: String)
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertOrder(order: OrderEntity): Long
