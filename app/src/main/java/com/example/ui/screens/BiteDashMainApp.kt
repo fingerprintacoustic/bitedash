@@ -1438,7 +1438,8 @@ fun CartScreen(viewModel: BiteDashViewModel) {
         }
     }
 
-    // Payment Processing Simulation Modal
+    // Checkout progress dialog: placing the order, paying, and the result. Its header
+    // stays neutral ("Checkout") because it also shows cash orders and form errors.
     if (paymentStep != PaymentStep.Idle) {
         Dialog(onDismissRequest = {
             when (paymentStep) {
@@ -1462,7 +1463,7 @@ fun CartScreen(viewModel: BiteDashViewModel) {
                     verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
                     Text(
-                        text = "Carrier Processing",
+                        text = "Checkout",
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold
                     )
