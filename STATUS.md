@@ -170,10 +170,10 @@ and number typed in the app are not sent to Paynow; the customer picks how to pa
 - Online orders are saved before payment. Restaurants now only see Cash on Delivery orders and orders Paynow has
   confirmed as paid. Abandoned/failed payments are not cancelled: they stay in Firestore, hidden from restaurants.
 
-## Pending for the next release (on `main`, not in 6.24)
+## 6.25 (versionCode 32): what's new since 6.24
 
-Fixes merged since 6.24 (versionCode 31). They reach users only in the next AAB, which needs a version bump (the next
-versionCode is **32**; never 30). Batch these with anything else pending into one build.
+`app/build.gradle.kts` is at `versionCode = 32` / `versionName = "6.25"`. The next build after this one needs
+versionCode **33** (never 30).
 - **Checkout error titles** (PR #37). The checkout dialog used to title every error "Payment Issue", including a cash
   order refused for a phone number of just "07". Now:
   - Form problems (phone, manual-payment reference, address) say "Check Your Details".
@@ -183,8 +183,11 @@ versionCode is **32**; never 30). Batch these with anything else pending into on
 - **Checkout dialog header** (PR #38): "Carrier Processing" became "Checkout". The header shows on every checkout
   step, including cash orders and form errors.
 
-Both were built and unit-tested on 2026-10-05, with lint showing no errors. **Neither has been seen on a device
-yet.** Check them on the next build: cash checkout with phone "07", then a successful cash order.
+Both were built and unit-tested on 2026-10-05, with lint showing no errors. **Checked on the test phone (debug
+build, 2026-10-05):** a cash checkout with phone "07" showed the header "Checkout" and the title "Check Your Details"
+above "Please enter a phone number the rider can call when they arrive." No order was created. The temporary
+customer's `users/` doc was deleted afterwards; its Auth user is left for the admin to delete. Not yet seen on the
+6.25 release build.
 
 ## Not verified
 
@@ -371,7 +374,7 @@ No remaining `bd-test-*` accounts or data. `feature/pesepay` branch (see below) 
 
 The signed AAB is built by `.github/workflows/build-release-aab.yml` (manual run or a `release-*` tag) from the
 repository secrets `KEYSTORE_BASE64`, `STORE_PASSWORD`, `KEY_PASSWORD`, `PAYNOW_INTEGRATION_ID`,
-`PAYNOW_INTEGRATION_KEY`. `app/build.gradle.kts` is at `versionCode = 31` / `versionName = "6.24"`.
+`PAYNOW_INTEGRATION_KEY`. `app/build.gradle.kts` is at `versionCode = 32` / `versionName = "6.25"`.
 
 **6.24 (versionCode 31) is uploaded to closed testing**, replacing 6.23. Built 2026-10-04 from `main` at commit
 `b07f438` (the PR #29 merge; Actions run 37252175110), signed with the upload key (CN=Fingerprint Acoustic). It has
