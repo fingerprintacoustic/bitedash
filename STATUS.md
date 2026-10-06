@@ -181,7 +181,6 @@ and number typed in the app are not sent to Paynow; the customer picks how to pa
   approval and Switch Role on 6.23.
 - Simulation mode: from 6.24 customers can no longer switch it on (the "Manual Multi-Role Mode" checkbox is gone), so
   every real order follows its real status. 6.23 and older still have the checkbox.
-- The 6.24 fixes on a release build (they were tested on a debug build; see "6.24 fixes" below).
 
 ## Known open items
 
@@ -210,6 +209,56 @@ it, 4.5 when an admin added a brand) and nobody could rate anything.
   and 4.0 / 5.0 on its page. All test data was deleted afterwards and checked to be gone.
 - Not built: a rating count next to the average (it would need a local database change, which in this app wipes
   customers' order history), and rating riders.
+
+## 6.24 on the release build: tested and passing (2026-10-05)
+
+BiteDash was installed on the test Samsung from its Play listing (closed testing). App info showed **6.24 /
+versionCode 31**, installer `com.android.vending`. That is the signed release build, not a debug build. One full run
+used temporary restaurant, rider and customer accounts. Everything passed:
+- **Restaurant:** setup and admin approval worked. Manage Menu: "Zebra Burger" was added first, then "Apple Chips".
+  Apple Chips went straight to #1 when added, and that order held after Save and after reopening.
+- **Rider:** registration showed "Registration Submitted". Approving it in the console moved the open screen into the
+  rider dashboard without a restart.
+- **Customer role screen:** no "Manual Multi-Role Mode" checkbox.
+- **Ratings, before:** the new restaurant showed "New" on Browse and "New, no ratings yet" on its page. The customer
+  menu was in the same order as the restaurant's.
+- **Checkout settings** (`paynowLive: false`, `unavailableMethods: ["ZIPIT", "Bank Cards"]`):
+  - EcoCash showed the Manual Pay steps: receiving number 0772673352, a reference box and "Submit Order".
+  - ZIPIT and Bank Cards both showed "Not available yet", with "…aren't available yet. Please choose EcoCash, InnBucks
+    or cash on delivery".
+  - Address and phone were prefilled from the profile.
+- **Cash order:**
+  - "07" as the phone was refused ("Please enter a phone number the rider can call when they arrive."). Minor: that
+    dialog's title says "Payment Issue".
+  - With a full number: "Order Placed! … Pay the rider $4.00 in USD cash when your food arrives."
+  - The confirmation stayed until "Track Delivery" was tapped, then Tracking opened ("Waiting for Restaurant to
+    Accept").
+- **Restaurant order handling:**
+  - The order arrived as "Pending Acceptance · Unpaid · collect on delivery · $4.00".
+  - Reject asked "Reject this order? … This can't be undone." ("Keep order" kept it).
+  - Accept worked. "Prepare" fits on one line.
+  - Cancel on the preparing order asked "Cancel this order? … This can't be undone." (kept).
+  - Ready moved the order to "Ready for Pickup".
+- **Rider delivery:**
+  - The card showed "Collect cash on delivery $4.00".
+  - "Navigate to Restaurant" opened the Google Maps app.
+  - Accept Delivery → Pick Up Order → Mark Delivered. Firestore then showed `status: COMPLETED`,
+    `deliveryStatus: DELIVERED`, `paymentStatus: CASH_ON_DELIVERY`.
+- **Customer ratings:**
+  - History showed "Completed" (readable) and "Payment: USD Cash", and offered "Rate BD Test Kitchen".
+  - 4 stars were saved, and the card then showed "You rated this order".
+  - Firestore: `ratings/{orderId}` had `stars: 4`, `counted: true`. The restaurant had `avgRating 4`, `ratingCount 1`,
+    `ratingSum 4`, and the legacy `rating` was unchanged at 0.
+  - The app then showed **4.0** on Browse and **4.0 / 5.0** on the restaurant page.
+- **Switch Role** from the restaurant, rider and customer dashboards opened the role screen and stayed there.
+
+The test accounts were signed up and signed in by hand on the phone; the rest was driven over adb. **All test data
+was deleted afterwards** and checked in the console:
+- The 3 Auth users (`bd-test-customer/-restaurant/-driver@example.com`, deleted by the admin) and their `users/` docs.
+- The `drivers/` doc, the restaurant and its 2 `menu_items`.
+- The order and its rating.
+
+Restaurants (4), menu items (5), rider profiles (2) and accounts (9) are back to what they were before.
 
 ## 6.24 fixes: all tested together on a device (debug build, 2026-10-03)
 
@@ -315,8 +364,8 @@ the 6.24 fixes, the Firestore checkout settings and customer ratings. Copied to
 Why 31: the Play Console refused versionCode 30 as "already used", although no bundle 30 was listed (a code stays
 used once a bundle with it has been uploaded, even if it's removed from a draft). **Never reuse 30**; the 6.24
 code-30 builds (runs 37177228835, 37202818135, 37207840182) can't be uploaded.
-**Not yet tap-tested on the installed release build** — only on a debug build and over REST so far (see "Not
-verified" above); that's still the thing to do once a device picks up the update from Play.
+**Tap-tested on the release build installed from Play (2026-10-05): everything passed.** See **6.24 on the release
+build** above.
 
 6.23 (versionCode 29) was the previous closed-testing build, made 2026-10-03 from `main` at commit `739fa87` (the
 PR #21 merge; Actions run 37168645007, artifact `BiteDash-release-aab`). It is copied to
@@ -334,8 +383,9 @@ browser automation, and there is no Play publishing API set up. 6.22 (versionCod
   Play. The Play Console's "Latest releases" overview (checked 2026-10-03) lists internal testing as release
   `0.0.0.4` (versionCode 4, Jun 24, 2026), so 6.22 may no longer be the release shown on that track.
 - **Closed testing ("Bitedash tester" track):** **6.24 (versionCode 31)** uploaded 2026-10-04, replacing 6.23. Play
-  updates testers automatically, or they can tap Update on the BiteDash page in the Play Store. Not yet confirmed
-  installed/verified from this track (6.23 was, on 2026-10-03 — see **Switch Role** above for that pass).
+  updates testers automatically, or they can tap Update on the BiteDash page in the Play Store. Confirmed on
+  2026-10-05: installing from the Play listing on the test phone gave 6.24 / versionCode 31 (installer
+  `com.android.vending`), and it passed the full test (see **6.24 on the release build**).
 - Once production access is granted, promote the newest tested build to production.
 
 ## Branches
