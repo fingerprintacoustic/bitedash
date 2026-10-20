@@ -333,6 +333,20 @@ testers try 6.25.** The owner wants no new builds until customers have tested 6.
 
 6.25 (versionCode 33) is live on closed testing. The owner doesn't want another build for now, so these wait for the next one. Batch
 everything into that single AAB.
+- **Admins can assign a restaurant's owner in the app. Required, decided by the owner on 2026-10-20.** Shava, soccer
+  chips and chegutu potato cut belong to Mr Mushonga (Shaddy), but their `ownerUserId` is blank (checked live
+  2026-10-20). Today nothing records that they're his. Every admin, including any added later, gets their order
+  alerts. They can be run only through an admin's "Manage as Owner", and no staff can be added. The app has no screen
+  to set an owner, and only the developer can reach the Firebase console, so the owner chose to wait for this
+  release rather than edit Firestore by hand.
+  - In Admin Control Hub → Restaurants, add an "Assign owner" action: pick an account from a list (name + email) and
+    set `ownerUserId`. Nothing is typed. Admins can already write restaurants under the rules, so no rules change is
+    needed. Allow clearing it too.
+  - Mr Mushonga's account (`users/R00arzAHgGRCjyYEfCD6VCM1RKf1`) is an **admin**. Check that owning restaurants
+    doesn't change how an admin's app behaves: role stays admin, and "Manage as Owner" still works. The owner-side
+    "switch kitchen" already handles one account owning several restaurants.
+  - Once set, the restaurant's order alerts go to him as the owner (`orderAlerts.ts` reads `ownerUserId`), and he can
+    add staff.
 - **Order notifications in the app. Required, decided by the owner on 2026-10-06.** Nobody is told a new order
   arrived: not admins, restaurant owners or staff. An order sits at "Pending Acceptance" until someone happens to open
   the app. This matters most for the three admin-created restaurants (Shava, soccer chips, chegutu potato cut),
