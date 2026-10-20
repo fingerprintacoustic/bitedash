@@ -1,6 +1,6 @@
 # BiteDash status
 
-Last updated: 2026-10-06. Firebase project: `bitedash-1e078`. Branch: `main` (everything below is pushed).
+Last updated: 2026-10-20. Firebase project: `bitedash-1e078`. Branch: `main` (everything below is pushed).
 
 ## Deployed to production (matches `main`)
 
@@ -92,6 +92,38 @@ registered (added 2026-10-03, read from the 6.22 APK installed from Play): SHA-1
 `bc:af:40:17:67:cf:d7:b1:f4:6a:0d:5f:34:17:4e:70:8c:8f:c3:f0:b3:b9:fe:f4:43:ac:84:92:98:e4:7f:9b`. These cover
 every install from Play. Sideloaded builds (debug, or the AAB signed with the upload key) have different
 certificates that are not registered. Phone login on the debug build worked without them, through Play Integrity.
+
+## Incident 2026-10-18: an EcoCash order saved as `PENDING` (investigated 2026-10-20)
+
+Order `Cv7lChCkxV5BmFhYKiE5` was created at 2026-10-18 05:26 UTC (07:26 Harare) for Chico Chica's (Sunningdale): six
+items, subtotal $39 + $2 delivery = **$41**, `paymentMethod ECO_CASH`, `paymentStatus PENDING`,
+`status PENDING_ACCEPTANCE`. It was expected to be `AWAITING_MANUAL_CONFIRMATION`, and at first this looked like
+`paynowLive` had been `true` that night.
+
+**Finding: `paynowLive` was not involved. The order came from an old app build (before 2026-09-08) that wrote it
+directly to Firestore and only simulated the payment.**
+- `paymentRef` is `BD-ECO-YVRP-80545`. Only the pre-Paynow checkout generated `BD-<method>-<4 letters>-<number>`
+  references. It was removed in 468c95f (2026-09-08), and 6.17 (versionCode 23) still had it. That checkout showed
+  a fake "sending prompt → PIN → confirming" sequence with delays, wrote the order with `paymentStatus PENDING`, and
+  told the customer it had worked. No money moved.
+- `placeOrder` didn't create it. That function always writes `paymentRef: ""` and a `customerPaymentReference` field,
+  and this order has neither. Its logs show no calls after 2026-10-13.
+- Paynow was never called. `initiatePaynowPayment` has no calls after 2026-10-06, and there is no `payments`
+  collection, which every Paynow attempt would have created.
+- Old builds don't read `public_settings/checkout`, so the flag couldn't have changed anything. It reads `false`
+  (checked 2026-10-20). Firestore keeps no change history, so it can't be proved that it never changed. Nothing
+  points to a change, though, and the git history and these notes record only the two short test flips (2026-10-05).
+- The current rules allow it: client order creation is still permitted for old builds (see **Known open items**),
+  as long as `paymentStatus` is `PENDING`/`CASH_ON_DELIVERY`.
+- No other customers were affected. On 2026-10-20 this was the only document in `orders`.
+- Effect: restaurants on current builds don't see the order, because they only show cash or `PAID` orders. It does
+  appear in the admin's active Orders list. A restaurant running a build that old would see it. Its prices were
+  calculated on the phone, not on the server.
+- The customer account was created 2026-07-25 under the owner's first name ("Shadreck"). That suggests the owner
+  placed it from an old install. **Not confirmed yet:** ask the owner whether it was them and which app version that
+  phone has. If it was a real customer, contact them, because the old app told them they had paid.
+- Still to do: decide what to do with the order (cancel, or delete in the console). Get anyone still on a pre-6.24
+  build to update from Play. Close the hole by changing the `orders` create rule to `if false` (a deploy, no new AAB).
 
 ## Manual mobile-money payments (works right now, independent of Paynow)
 
@@ -319,7 +351,9 @@ everything into that single AAB.
 ## Known open items
 
 - Client order creation is still allowed by the rules (needed by older app builds). Once the version that uses
-  `placeOrder` is what everyone has, change the `orders` create rule to `allow create: if false;`.
+  `placeOrder` is what everyone has, change the `orders` create rule to `allow create: if false;`. This is how the
+  2026-10-18 order got in (see **Incident 2026-10-18**). Old builds fake a successful payment, so this is now worth
+  doing soon, even though it breaks ordering on very old installs.
 
 ## Customer ratings (6.24; server side live since 2026-10-04)
 
