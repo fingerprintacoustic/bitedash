@@ -121,6 +121,12 @@ directly to Firestore and only simulated the payment.**
   calculated on the phone, not on the server.
 - **Confirmed 2026-10-20: it was Shaddy's own order**, placed from an old install on their phone. It wasn't a real
   customer, so there's nobody to contact.
+- **Old build confirmed in the Play Console** (Statistics → Installed audience by app version, checked 2026-10-20):
+  one device still has **6.17 (versionCode 23)** installed from Play. It shows every day from at least 2026-10-08 to
+  2026-10-17 (the latest day with data), next to 7–9 devices on 6.25. 6.17 is the last version with the old
+  checkout: the commit just before 468c95f is versionCode 23 / 6.17 and still makes `BD-…` references. Play doesn't
+  say whose device it is. The internal testing track (0.0.0.4) has no tester list switched on, so it isn't where
+  6.17 came from.
 - **Keep the order:** the user wants it left as it is (don't cancel or delete it). It went through the old path,
   so it doesn't test the current checkout. A new order after Shaddy updates will.
 - Still to do: Shaddy updates from Play. Optional: change the `orders`
