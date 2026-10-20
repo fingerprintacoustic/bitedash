@@ -119,11 +119,12 @@ directly to Firestore and only simulated the payment.**
 - Effect: restaurants on current builds don't see the order, because they only show cash or `PAID` orders. It does
   appear in the admin's active Orders list. A restaurant running a build that old would see it. Its prices were
   calculated on the phone, not on the server.
-- The customer account was created 2026-07-25 under the owner's first name ("Shadreck"). That suggests the owner
-  placed it from an old install. **Not confirmed yet:** ask the owner whether it was them and which app version that
-  phone has. If it was a real customer, contact them, because the old app told them they had paid.
-- Still to do: decide what to do with the order (cancel, or delete in the console). Get anyone still on a pre-6.24
-  build to update from Play. Close the hole by changing the `orders` create rule to `if false` (a deploy, no new AAB).
+- **Confirmed 2026-10-20: it was Shaddy's own order**, placed from an old install on their phone. It wasn't a real
+  customer, so there's nobody to contact.
+- Still to do: Shaddy updates from Play. Cancel the order, or delete it in the console. Optional: change the `orders`
+  create rule to `if false` (a deploy, no new AAB, nothing changes for 6.24/6.25). It stops old installs placing
+  fake-paid orders, but they then get a misleading "Couldn't reach the server… check your connection" error, not a
+  prompt to update, so telling testers to update is still needed. Waiting on the user's decision.
 
 ## Manual mobile-money payments (works right now, independent of Paynow)
 
