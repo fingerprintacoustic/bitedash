@@ -4,9 +4,9 @@ Last updated: 2026-10-20. Firebase project: `bitedash-1e078`. Branch: `main` (ev
 
 ## Deployed to production (matches `main`)
 
-- **Firestore rules** (`firestore.rules`): restaurant owners/staff cannot change `isApproved`; customers can only
-  create *new* orders (status `PENDING_ACCEPTANCE`/`PREPARING`, unassigned, unsettled, payment `PENDING` or
-  `CASH_ON_DELIVERY`). Since 2026-10-04 also: `ratings/{orderId}` (see **Customer ratings**), and owners/staff can't
+- **Firestore rules** (`firestore.rules`): restaurant owners/staff cannot change `isApproved`; customers can't
+  create orders at all since 2026-10-20 (`allow create: if false`; every order goes through `placeOrder`, see
+  **Incident 2026-10-18**). Since 2026-10-04 also: `ratings/{orderId}` (see **Customer ratings**), and owners/staff can't
   write a restaurant's `avgRating`/`ratingCount`/`ratingSum`.
 - **Cloud Functions** (`functions/`, us-central1): `initiatePaynowPayment`, `checkPaynowPaymentStatus`,
   `paynowResultWebhook`, `paynowReturn`, **`placeOrder`** (prices an order server-side from Firestore), and
@@ -130,10 +130,13 @@ directly to Firestore and only simulated the payment.**
   6.17 came from.
 - **Keep the order:** the user wants it left as it is (don't cancel or delete it). It went through the old path,
   so it doesn't test the current checkout. A new order after Shaddy updates will.
-- Still to do: Shaddy updates from Play. Optional: change the `orders`
-  create rule to `if false` (a deploy, no new AAB, nothing changes for 6.24/6.25). It stops old installs placing
-  fake-paid orders, but they then get a misleading "Couldn't reach the server… check your connection" error, not a
-  prompt to update, so telling testers to update is still needed. Waiting on the user's decision.
+- **Fixed 2026-10-20 (rules only, no AAB):** the `orders` create rule is now `allow create: if false`, deployed with
+  `firebase deploy --only firestore:rules`. The console's rules history shows the new release (2026-10-20 1:47 PM)
+  directly after the 2026-10-04 one. Before the change, the shipped 6.24 (b07f438) and 6.25 (41021c2) code was
+  checked: neither ever calls `createOrder`. They order only through `placeOrder`, which uses the Admin SDK and
+  isn't affected by the rules. Not tested with a real order afterwards: the console no longer has a rules
+  playground. Old installs (6.17 and anything before `placeOrder`) now get "Couldn't reach the server… check your
+  connection" at checkout, not a prompt to update. Still to do: Shaddy updates from Play (the user is asking them).
 
 ## Manual mobile-money payments (works right now, independent of Paynow)
 
@@ -360,10 +363,9 @@ everything into that single AAB.
 
 ## Known open items
 
-- Client order creation is still allowed by the rules (needed by older app builds). Once the version that uses
-  `placeOrder` is what everyone has, change the `orders` create rule to `allow create: if false;`. This is how the
-  2026-10-18 order got in (see **Incident 2026-10-18**). Old builds fake a successful payment, so this is now worth
-  doing soon, even though it breaks ordering on very old installs.
+- The project has a second Firebase app registered, "Admin Web", whose code isn't in this repository. Admins never
+  had a create rule for `orders`, so closing client order creation can't have affected it. What it is and whether
+  it's used is unknown.
 
 ## Customer ratings (6.24; server side live since 2026-10-04)
 
