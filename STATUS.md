@@ -347,7 +347,20 @@ everything into that single AAB.
     - **The restaurant's owner and `staffEmails`:** their own orders.
     - **Riders:** when an order is ready for pickup (confirmed by the owner on 2026-10-06).
   - Test on a debug build before building, like the 6.25 sweep.
-- An email alert from a Cloud Function was offered as a no-build stopgap. The owner chose not to set one up for now.
+- **Stopgap until then: new-order emails (no AAB). The owner asked for them on 2026-10-20.** Two functions in
+  `functions/src/orderAlerts.ts`, `onOrderCreatedAlert` and `onOrderPaidAlert`, send email through Gmail (nodemailer)
+  using the secrets `ALERT_GMAIL_USER` and `ALERT_GMAIL_APP_PASSWORD` (a Gmail app password, set by the owner).
+  - Cash on Delivery: the restaurant and the admins, when it's placed.
+  - Manual Pay: the admins when it's placed ("Payment to confirm", with the customer's reference). The restaurant
+    and the admins once it becomes `PAID`.
+  - Paynow: the restaurant and the admins once it's `PAID`.
+  - "The restaurant" is the owner's `users` email plus `staffEmails`. The admins are every `users` doc with
+    `role == "admin"`. Recipients go in BCC. Someone on both lists gets the restaurant's version only.
+  - Each (order, kind) is claimed in `order_alerts/{orderId}_{kind}` first, so a redelivered event doesn't send twice.
+    Only the server can read or write that collection: no rule matches it.
+  - The logic that decides who gets what was checked with 8 sample cases. **Not deployed yet:** the secrets have to
+    exist first. Then deploy with `firebase deploy --only functions:onOrderCreatedAlert,functions:onOrderPaidAlert`
+    and place a real test order.
 
 ## Not verified
 
