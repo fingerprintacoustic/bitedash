@@ -119,8 +119,9 @@ directly to Firestore and only simulated the payment.**
 - Effect: restaurants on current builds don't see the order, because they only show cash or `PAID` orders. It does
   appear in the admin's active Orders list. A restaurant running a build that old would see it. Its prices were
   calculated on the phone, not on the server.
-- **Confirmed 2026-10-20: it was Shaddy's own order**, placed from an old install on their phone. It wasn't a real
-  customer, so there's nobody to contact.
+- **The order is on Shaddy's own account** (checked 2026-10-20 by the user in the admin console and Firestore). It
+  isn't a test account and isn't a real customer. **Not confirmed:** that Shaddy placed it personally, and that the
+  6.17 device below is their phone. Shaddy hasn't been asked yet.
 - **Old build confirmed in the Play Console** (Statistics → Installed audience by app version, checked 2026-10-20):
   one device still has **6.17 (versionCode 23)** installed from Play. It shows every day from at least 2026-10-08 to
   2026-10-17 (the latest day with data), next to 7–9 devices on 6.25. 6.17 is the last version with the old
