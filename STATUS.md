@@ -121,7 +121,9 @@ directly to Firestore and only simulated the payment.**
   calculated on the phone, not on the server.
 - **Confirmed 2026-10-20: it was Shaddy's own order**, placed from an old install on their phone. It wasn't a real
   customer, so there's nobody to contact.
-- Still to do: Shaddy updates from Play. Cancel the order, or delete it in the console. Optional: change the `orders`
+- **Keep the order:** the user wants it left as it is (don't cancel or delete it). It went through the old path,
+  so it doesn't test the current checkout. A new order after Shaddy updates will.
+- Still to do: Shaddy updates from Play. Optional: change the `orders`
   create rule to `if false` (a deploy, no new AAB, nothing changes for 6.24/6.25). It stops old installs placing
   fake-paid orders, but they then get a misleading "Couldn't reach the server… check your connection" error, not a
   prompt to update, so telling testers to update is still needed. Waiting on the user's decision.
