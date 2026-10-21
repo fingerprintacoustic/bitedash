@@ -1,7 +1,7 @@
 import { initializeApp } from "firebase-admin/app";
 import { getFirestore, FieldValue, Firestore } from "firebase-admin/firestore";
 import { onCall, onRequest, HttpsError } from "firebase-functions/v2/https";
-import { onDocumentCreated } from "firebase-functions/v2/firestore";
+import { onDocumentCreated, onDocumentUpdated } from "firebase-functions/v2/firestore";
 import { defineSecret } from "firebase-functions/params";
 import { logger } from "firebase-functions/v2";
 import {
@@ -13,6 +13,13 @@ import {
   ExpressMethod,
   PaynowPaymentStatus,
 } from "./paynow";
+import {
+  alertForNewOrder,
+  alertForUpdate,
+  customerConfirmationDue,
+  sendCustomerConfirmation,
+  sendOrderAlert,
+} from "./orderAlerts";
 
 initializeApp();
 const db = getFirestore();
@@ -25,6 +32,10 @@ const RETURN_URL = `${FUNCTIONS_HOST}/paynowReturn`;
 
 const PAYNOW_INTEGRATION_ID = defineSecret("PAYNOW_INTEGRATION_ID");
 const PAYNOW_INTEGRATION_KEY = defineSecret("PAYNOW_INTEGRATION_KEY");
+// The Gmail account that sends new-order emails, and an app password for it
+// (Google Account → Security → App passwords). Set with firebase functions:secrets:set.
+const ALERT_GMAIL_USER = defineSecret("ALERT_GMAIL_USER");
+const ALERT_GMAIL_APP_PASSWORD = defineSecret("ALERT_GMAIL_APP_PASSWORD");
 
 // Express checkout needs the payer's email. While the Paynow integration is in TEST
 // mode, Paynow only accepts an email that belongs to the merchant account, so
@@ -606,5 +617,44 @@ export const onRatingCreated = onDocumentCreated(
       // restaurantId is recorded on the rating for the admin's reference.
       tx.update(ratingRef, { counted: true, restaurantId });
     });
+  }
+);
+
+// New-order emails (see orderAlerts.ts): when an order is placed, and when it
+// becomes paid (an admin confirming a Manual Pay transfer, or Paynow confirming).
+// The staff alert and the customer's confirmation are sent independently, so one
+// failing (each logs its own error) doesn't stop the other.
+const alertCreds = () => ({
+  user: ALERT_GMAIL_USER.value().trim(),
+  appPassword: ALERT_GMAIL_APP_PASSWORD.value().replace(/\s+/g, ""),
+});
+
+export const onOrderCreatedAlert = onDocumentCreated(
+  { document: "orders/{orderId}", region: REGION, secrets: [ALERT_GMAIL_USER, ALERT_GMAIL_APP_PASSWORD] },
+  async (event) => {
+    const order = event.data?.data();
+    if (!order) return;
+    const { orderId } = event.params;
+    const kind = alertForNewOrder(order);
+    await Promise.allSettled([
+      kind ? sendOrderAlert(db, alertCreds(), kind, orderId, order) : Promise.resolve(),
+      customerConfirmationDue(order, false) ? sendCustomerConfirmation(db, alertCreds(), orderId, order) : Promise.resolve(),
+    ]);
+  }
+);
+
+export const onOrderPaidAlert = onDocumentUpdated(
+  { document: "orders/{orderId}", region: REGION, secrets: [ALERT_GMAIL_USER, ALERT_GMAIL_APP_PASSWORD] },
+  async (event) => {
+    const before = event.data?.before.data();
+    const after = event.data?.after.data();
+    if (!before || !after) return;
+    const { orderId } = event.params;
+    const kind = alertForUpdate(before, after);
+    if (!kind) return;
+    await Promise.allSettled([
+      sendOrderAlert(db, alertCreds(), kind, orderId, after),
+      customerConfirmationDue(after, true) ? sendCustomerConfirmation(db, alertCreds(), orderId, after) : Promise.resolve(),
+    ]);
   }
 );
