@@ -390,8 +390,8 @@ everything into that single AAB.
     `bitedashorders+test@gmail.com` and placed a $5.50 USD Cash order at Shava (no owner, so no restaurant email and
     no real owner bothered). Order `oJGbBhOia9vDiw8y0PNa`. The function logs show `Order alert sent` (`new_cash`,
     3 admins, 0 restaurant) and `Customer confirmation sent`, so Gmail accepted the app password. The owner
-    confirmed both emails arrived. Afterwards the order and both `order_alerts` docs were deleted and the debug build was uninstalled. The test account's Auth user and
-    `users` doc are left for the owner to delete in the console.
+    confirmed both emails arrived. Afterwards the order and both `order_alerts` docs were deleted, the debug build
+    was uninstalled, and the owner deleted the test account (Auth user and `users` doc). No test data is left.
   - Not tested yet: the restaurant's copy (needs a restaurant with an owner), the Manual Pay "Payment to confirm"
     email, and the `PAID` emails. They use the same sending code as the test above.
 
