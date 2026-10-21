@@ -361,6 +361,9 @@ everything into that single AAB.
     - **The restaurant's owner and `staffEmails`:** their own orders.
     - **Riders:** when an order is ready for pickup (confirmed by the owner on 2026-10-06).
   - Test on a debug build before building, like the 6.25 sweep.
+  - **Still wanted, now that emails are live (owner, 2026-10-20).** Emails don't buzz a kitchen's phone, don't reach
+    riders, and don't tell customers as the order progresses. SMS was considered and turned down: automated texts
+    need a paid bulk SMS provider, while push is free.
 - **Stopgap until then: new-order emails (no AAB). The owner asked for them on 2026-10-20.** Two functions in
   `functions/src/orderAlerts.ts`, `onOrderCreatedAlert` and `onOrderPaidAlert`, send email through Gmail (nodemailer)
   using the secrets `ALERT_GMAIL_USER` and `ALERT_GMAIL_APP_PASSWORD` (a Gmail app password, set by the owner).
