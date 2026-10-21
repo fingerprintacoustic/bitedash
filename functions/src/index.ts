@@ -13,7 +13,13 @@ import {
   ExpressMethod,
   PaynowPaymentStatus,
 } from "./paynow";
-import { alertForNewOrder, alertForUpdate, sendOrderAlert } from "./orderAlerts";
+import {
+  alertForNewOrder,
+  alertForUpdate,
+  customerConfirmationDue,
+  sendCustomerConfirmation,
+  sendOrderAlert,
+} from "./orderAlerts";
 
 initializeApp();
 const db = getFirestore();
@@ -616,6 +622,8 @@ export const onRatingCreated = onDocumentCreated(
 
 // New-order emails (see orderAlerts.ts): when an order is placed, and when it
 // becomes paid (an admin confirming a Manual Pay transfer, or Paynow confirming).
+// The staff alert and the customer's confirmation are sent independently, so one
+// failing (each logs its own error) doesn't stop the other.
 const alertCreds = () => ({
   user: ALERT_GMAIL_USER.value().trim(),
   appPassword: ALERT_GMAIL_APP_PASSWORD.value().replace(/\s+/g, ""),
@@ -626,8 +634,12 @@ export const onOrderCreatedAlert = onDocumentCreated(
   async (event) => {
     const order = event.data?.data();
     if (!order) return;
+    const { orderId } = event.params;
     const kind = alertForNewOrder(order);
-    if (kind) await sendOrderAlert(db, alertCreds(), kind, event.params.orderId, order);
+    await Promise.allSettled([
+      kind ? sendOrderAlert(db, alertCreds(), kind, orderId, order) : Promise.resolve(),
+      customerConfirmationDue(order, false) ? sendCustomerConfirmation(db, alertCreds(), orderId, order) : Promise.resolve(),
+    ]);
   }
 );
 
@@ -637,7 +649,12 @@ export const onOrderPaidAlert = onDocumentUpdated(
     const before = event.data?.before.data();
     const after = event.data?.after.data();
     if (!before || !after) return;
+    const { orderId } = event.params;
     const kind = alertForUpdate(before, after);
-    if (kind) await sendOrderAlert(db, alertCreds(), kind, event.params.orderId, after);
+    if (!kind) return;
+    await Promise.allSettled([
+      sendOrderAlert(db, alertCreds(), kind, orderId, after),
+      customerConfirmationDue(after, true) ? sendCustomerConfirmation(db, alertCreds(), orderId, after) : Promise.resolve(),
+    ]);
   }
 );

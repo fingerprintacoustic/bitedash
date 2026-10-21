@@ -1,3 +1,4 @@
+import { getAuth } from "firebase-admin/auth";
 import { Firestore } from "firebase-admin/firestore";
 import { logger } from "firebase-functions/v2";
 import * as nodemailer from "nodemailer";
@@ -15,6 +16,10 @@ import * as nodemailer from "nodemailer";
  *
  * "The restaurant" is its owner's account email plus its staffEmails. The three
  * admin-run restaurants have no owner, which is why admins hear about every order.
+ *
+ * The customer also gets one confirmation email per order: when it's placed for
+ * Cash on Delivery and Manual Pay (saying the payment is being checked), and once
+ * it's paid for Paynow, so nobody is told an unpaid order went through.
  */
 
 export type AlertKind = "new_cash" | "payment_to_confirm" | "paid";
@@ -24,13 +29,24 @@ export interface MailCredentials {
   appPassword: string;
 }
 
+interface OrderLine {
+  name?: string;
+  price?: number;
+  quantity?: number;
+}
+
 interface OrderData {
+  userId?: string;
   restaurantId?: string;
   restaurantName?: string;
   customerName?: string;
   customerPhone?: string;
   customerAddress?: string;
   itemsSummary?: string;
+  items?: OrderLine[];
+  subtotal?: number;
+  deliveryFee?: number;
+  driverTip?: number;
   totalCost?: number;
   paymentMethod?: string;
   paymentStatus?: string;
@@ -48,6 +64,16 @@ export function alertForNewOrder(order: OrderData): AlertKind | null {
 export function alertForUpdate(before: OrderData, after: OrderData): AlertKind | null {
   if (after.paymentStatus === "PAID" && before.paymentStatus !== "PAID") return "paid";
   return null;
+}
+
+/**
+ * Whether the customer's confirmation is due: when Cash on Delivery or Manual Pay
+ * orders are placed, or when a Paynow order is paid. A Manual Pay order turning
+ * PAID later finds its confirmation already sent (one claim per order).
+ */
+export function customerConfirmationDue(order: OrderData, justPaid: boolean): boolean {
+  if (justPaid) return true;
+  return order.paymentStatus === "CASH_ON_DELIVERY" || order.paymentStatus === "AWAITING_MANUAL_CONFIRMATION";
 }
 
 const isEmail = (s: unknown): s is string => typeof s === "string" && /^[^\s@]+@[^\s@]+$/.test(s.trim());
@@ -124,6 +150,108 @@ function composeEmail(kind: AlertKind, orderId: string, order: OrderData, forRes
     "This is an automatic message from BiteDash.",
   );
   return { subject, text: lines.join("\n") };
+}
+
+const money = (n: unknown) => (typeof n === "number" && Number.isFinite(n) ? `$${n.toFixed(2)}` : "");
+
+function composeCustomerEmail(orderId: string, order: OrderData) {
+  const restaurant = (order.restaurantName || "").trim() || "the restaurant";
+  const method = PAYMENT_LABELS[order.paymentMethod || ""] || order.paymentMethod || "";
+  const name = (order.customerName || "").trim();
+
+  const items = Array.isArray(order.items) && order.items.length
+    ? order.items.map((i) => {
+      const qty = typeof i.quantity === "number" ? i.quantity : 1;
+      const lineTotal = typeof i.price === "number" ? ` - ${money(i.price * qty)}` : "";
+      return `  ${qty} x ${i.name || "Item"}${lineTotal}`;
+    })
+    : [`  ${order.itemsSummary || ""}`];
+
+  let paymentNote: string;
+  if (order.paymentStatus === "AWAITING_MANUAL_CONFIRMATION") {
+    paymentNote = `We're checking your ${method} payment. Once it's confirmed, ${restaurant} will start on your order.`;
+  } else if (order.paymentStatus === "CASH_ON_DELIVERY") {
+    paymentNote = "Please have cash ready to pay on delivery.";
+  } else {
+    paymentNote = `Your ${method} payment has been received.`;
+  }
+
+  const lines = [
+    name ? `Hi ${name},` : "Hi,",
+    "",
+    `Thanks for your order from ${restaurant}.`,
+    "",
+    "Your order:",
+    ...items,
+    "",
+  ];
+  if (typeof order.subtotal === "number") lines.push(`Subtotal: ${money(order.subtotal)}`);
+  if (typeof order.deliveryFee === "number" && order.deliveryFee > 0) lines.push(`Delivery: ${money(order.deliveryFee)}`);
+  if (typeof order.driverTip === "number" && order.driverTip > 0) lines.push(`Driver tip: ${money(order.driverTip)}`);
+  lines.push(
+    `Total: ${money(order.totalCost)}`,
+    `Payment: ${method}`,
+    "",
+    paymentNote,
+    "You'll be notified in the BiteDash app as your order progresses.",
+    "",
+    `Order ID: ${orderId}`,
+    "This is an automatic message from BiteDash.",
+  );
+  return { subject: `Your BiteDash order from ${restaurant}`, text: lines.join("\n") };
+}
+
+async function customerEmail(db: Firestore, userId: string | undefined): Promise<string | null> {
+  if (!userId) return null;
+  const user = await db.collection("users").doc(userId).get();
+  const email = user.get("email");
+  if (isEmail(email)) return email.trim();
+  try {
+    const authEmail = (await getAuth().getUser(userId)).email;
+    return isEmail(authEmail) ? authEmail.trim() : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Sends the customer's order confirmation once per order (claimed as {orderId}_customer). */
+export async function sendCustomerConfirmation(
+  db: Firestore,
+  creds: MailCredentials,
+  orderId: string,
+  order: OrderData
+): Promise<void> {
+  if (!creds.user || !creds.appPassword) {
+    logger.warn("Customer confirmation: Gmail address or app password not set, skipping", { orderId });
+    return;
+  }
+  const claim = db.collection("order_alerts").doc(`${orderId}_customer`);
+  try {
+    await claim.create({ orderId, kind: "customer", createdAt: new Date() });
+  } catch {
+    logger.info("Customer confirmation already sent", { orderId });
+    return;
+  }
+
+  try {
+    const to = await customerEmail(db, order.userId);
+    if (!to) {
+      await claim.update({ skipped: "no customer email", sentAt: new Date() });
+      logger.warn("Customer confirmation: no email on the customer's account", { orderId });
+      return;
+    }
+    const transport = nodemailer.createTransport({
+      service: "gmail",
+      auth: { user: creds.user, pass: creds.appPassword },
+    });
+    await transport.sendMail({ from: `BiteDash Orders <${creds.user}>`, to, ...composeCustomerEmail(orderId, order) });
+    await claim.update({ sentAt: new Date() });
+    logger.info("Customer confirmation sent", { orderId });
+  } catch (e) {
+    await claim.delete().catch(() => undefined);
+    logger.error("Customer confirmation failed", { orderId, error: String(e) });
+    throw e;
+  }
 }
 
 /**

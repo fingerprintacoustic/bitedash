@@ -358,9 +358,22 @@ everything into that single AAB.
     `role == "admin"`. Recipients go in BCC. Someone on both lists gets the restaurant's version only.
   - Each (order, kind) is claimed in `order_alerts/{orderId}_{kind}` first, so a redelivered event doesn't send twice.
     Only the server can read or write that collection: no rule matches it.
-  - The logic that decides who gets what was checked with 8 sample cases. **Not deployed yet:** the secrets have to
-    exist first. Then deploy with `firebase deploy --only functions:onOrderCreatedAlert,functions:onOrderPaidAlert`
-    and place a real test order.
+  - **Customer confirmation (added 2026-10-20, same functions and secrets).** The customer gets one email per order:
+    the restaurant, each item with its quantity and price, subtotal, delivery, tip, total, payment method, and "You'll
+    be notified in the BiteDash app as your order progresses".
+    - Cash on Delivery and Manual Pay: sent when the order is placed. Manual Pay says "We're checking your payment".
+    - Paynow: sent only once the order is `PAID`, so nobody is told an unpaid order went through.
+    - Claimed as `order_alerts/{orderId}_customer`, so a Manual Pay order turning `PAID` later doesn't send a second
+      one. It goes to the customer's `users` email, or their sign-in email if that's empty. With neither, it's skipped
+      and logged.
+    - The staff alert and the customer email are sent separately, so one failing doesn't stop the other.
+    - Checked in a dry run with a fake database and mailer (nothing sent): the email reads correctly, a repeat sends
+      nothing, and a pending Paynow order gets nothing.
+  - **Not deployed or tested with real email yet.** The secrets exist (2 versions each), but the app password still
+    has to be a real 16-letter Gmail app password. Then deploy with
+    `firebase deploy --only functions:onOrderCreatedAlert,functions:onOrderPaidAlert`, place a test order from a
+    debug build with a temporary `bd-test` customer, check the customer, restaurant and admin emails arrive, and
+    clean up the test order, account and `order_alerts` docs.
 
 ## Not verified
 
