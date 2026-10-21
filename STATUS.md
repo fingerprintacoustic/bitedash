@@ -369,11 +369,17 @@ everything into that single AAB.
     - The staff alert and the customer email are sent separately, so one failing doesn't stop the other.
     - Checked in a dry run with a fake database and mailer (nothing sent): the email reads correctly, a repeat sends
       nothing, and a pending Paynow order gets nothing.
-  - **Not deployed or tested with real email yet.** The secrets exist (2 versions each), but the app password still
-    has to be a real 16-letter Gmail app password. Then deploy with
-    `firebase deploy --only functions:onOrderCreatedAlert,functions:onOrderPaidAlert`, place a test order from a
-    debug build with a temporary `bd-test` customer, check the customer, restaurant and admin emails arrive, and
-    clean up the test order, account and `order_alerts` docs.
+  - **Deployed 2026-10-20** from this branch (`firebase deploy --only
+    functions:onOrderCreatedAlert,functions:onOrderPaidAlert`). The sender is `bitedashorders@gmail.com`, a Gmail
+    the owner made for this, with 2-Step Verification on their own phone. Both secrets are on version 2.
+  - **Tested 2026-10-20.** A debug build on the Samsung signed up a temporary customer as
+    `bitedashorders+test@gmail.com` and placed a $5.50 USD Cash order at Shava (no owner, so no restaurant email and
+    no real owner bothered). Order `oJGbBhOia9vDiw8y0PNa`. The function logs show `Order alert sent` (`new_cash`,
+    3 admins, 0 restaurant) and `Customer confirmation sent`, so Gmail accepted the app password. Afterwards the order
+    and both `order_alerts` docs were deleted and the debug build was uninstalled. The test account's Auth user and
+    `users` doc are left for the owner to delete in the console.
+  - Not tested yet: the restaurant's copy (needs a restaurant with an owner), the Manual Pay "Payment to confirm"
+    email, and the `PAID` emails. They use the same sending code as the test above.
 
 ## Not verified
 
